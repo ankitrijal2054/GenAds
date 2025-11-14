@@ -64,10 +64,10 @@ async def root():
     }
 
 
-# Import and include routers (to be created)
-# from app.api import projects, generation
-# app.include_router(projects.router, prefix="/api/projects", tags=["projects"])
-# app.include_router(generation.router, prefix="/api/generation", tags=["generation"])
+# Import and include routers
+from app.api import projects, generation
+app.include_router(projects.router, prefix="/api/projects", tags=["projects"])
+app.include_router(generation.router, prefix="/api/generation", tags=["generation"])
 
 
 if __name__ == "__main__":
