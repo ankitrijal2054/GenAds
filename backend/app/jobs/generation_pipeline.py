@@ -26,6 +26,7 @@ from app.database.crud import (
     get_project,
     update_project_status,
     update_project_output,
+    update_project_s3_paths,
 )
 from app.models.schemas import AdProject, Scene, StyleSpec
 from app.services.scene_planner import ScenePlanner
@@ -35,6 +36,11 @@ from app.services.compositor import Compositor
 from app.services.text_overlay import TextOverlayRenderer
 from app.services.audio_engine import AudioEngine
 from app.services.renderer import Renderer
+from app.utils.s3_utils import (
+    create_project_folder_structure,
+    delete_project_folder,
+    upload_to_project_folder,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +92,23 @@ class GenerationPipeline:
             project = get_project(self.db, self.project_id)
             if not project:
                 raise ValueError(f"Project {self.project_id} not found")
+
+            # ===== S3 RESTRUCTURING: Initialize project folder structure =====
+            logger.info("📁 Initializing S3 project folder structure...")
+            try:
+                folders = await create_project_folder_structure(str(self.project_id))
+                # Note: update_project_s3_paths is NOT async, don't await it
+                update_project_s3_paths(
+                    self.db,
+                    self.project_id,
+                    folders["s3_folder"],
+                    folders["s3_url"]
+                )
+                logger.info(f"✅ S3 folders initialized at {folders['s3_url']}")
+                self.s3_folders = folders  # Store for use by services
+            except Exception as e:
+                logger.error(f"⚠️ Failed to initialize S3 folders: {e}")
+                self.s3_folders = None  # Fallback to old behavior
 
             # Parse AdProject JSON
             ad_project = AdProject(**project.ad_project_json)

@@ -52,5 +52,8 @@ apiClient.interceptors.response.use(
   }
 )
 
+// Export as 'api' for convenience
+export const api = apiClient
+
 export default apiClient
 

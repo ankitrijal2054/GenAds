@@ -41,13 +41,18 @@ export const useGeneration = () => {
   }, [])
 
   // Get generation progress
-  const getProgress = useCallback(async (projectId: string) => {
+  const getProgress = useCallback(async (projectId: string, signal?: AbortSignal) => {
     try {
       const response = await apiClient.get(
-        `/api/generation/projects/${projectId}/progress/`
+        `/api/generation/projects/${projectId}/progress`, // Removed trailing slash to prevent redirect loop
+        { signal, timeout: 10000 } // 10 second timeout
       )
       return response.data as GenerationProgress
-    } catch (err) {
+    } catch (err: any) {
+      // Don't throw error if request was aborted
+      if (err?.name === 'AbortError' || err?.code === 'ERR_CANCELED') {
+        throw err
+      }
       const message = err instanceof Error ? err.message : 'Failed to fetch progress'
       setError(message)
       throw err

@@ -12,6 +12,7 @@ from app.database.crud import (
     get_project_by_user,
     get_user_projects,
     update_project,
+    update_project_s3_paths,
     update_project_status,
     delete_project,
     get_generation_stats
@@ -24,6 +25,7 @@ from app.models.schemas import (
     ErrorResponse
 )
 from app.api.auth import get_current_user_id
+from app.utils.s3_utils import create_project_folder_structure, delete_project_folder
 
 logger = logging.getLogger(__name__)
 
@@ -128,9 +130,34 @@ async def create_new_project(
             duration=request.duration
         )
         
-        logger.info(f"✅ Created project {project.id} for user {user_id}")
+        # S3 RESTRUCTURING: Initialize S3 folder structure for new project
+        try:
+            folders = await create_project_folder_structure(str(project.id))
+            # Note: update_project_s3_paths is NOT async, don't await it
+            update_project_s3_paths(
+                db,
+                project.id,
+                folders["s3_folder"],
+                folders["s3_url"]
+            )
+            logger.info(f"✅ Created project {project.id} with S3 folders at {folders['s3_url']}")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to initialize S3 folders for {project.id}: {e}")
+            # Continue anyway - project created, S3 will be initialized during generation
         
-        return ProjectResponse.from_orm(project)
+        # Convert project to response - handle both DB and mock projects
+        return ProjectResponse.model_validate({
+            "id": project.id,
+            "user_id": project.user_id,
+            "title": project.title,
+            "status": project.status,
+            "progress": project.progress,
+            "cost": float(project.cost) if project.cost else 0.0,
+            "s3_project_folder": getattr(project, 's3_project_folder', None),
+            "s3_project_folder_url": getattr(project, 's3_project_folder_url', None),
+            "created_at": project.created_at,
+            "updated_at": project.updated_at,
+        })
     
     except Exception as e:
         logger.error(f"❌ Failed to create project: {e}")
@@ -225,7 +252,22 @@ async def list_user_projects(
         # Count total (for pagination info)
         total = len(projects)  # In production, use a separate count query
         
-        response_projects = [ProjectResponse.from_orm(p) for p in projects]
+        # Convert projects to response - handle both DB and mock projects
+        response_projects = [
+            ProjectResponse.model_validate({
+                "id": p.id,
+                "user_id": p.user_id,
+                "title": p.title,
+                "status": p.status,
+                "progress": p.progress,
+                "cost": float(p.cost) if p.cost else 0.0,
+                "s3_project_folder": getattr(p, 's3_project_folder', None),
+                "s3_project_folder_url": getattr(p, 's3_project_folder_url', None),
+                "created_at": p.created_at,
+                "updated_at": p.updated_at,
+            })
+            for p in projects
+        ]
         
         return ProjectListResponse(
             total=total,
@@ -348,13 +390,15 @@ async def delete_project_endpoint(
     """
     Delete a project (only if owned by current user).
     
+    Also deletes all S3 files associated with the project.
+    
     **Path Parameters:**
     - project_id: UUID of the project to delete
     
     **Headers:**
     - Authorization: Bearer {token} (optional in development)
     
-    **Response:** {"status": "deleted", "project_id": "..."}
+    **Response:** {"status": "deleted", "project_id": "...", "s3_cleaned": true/false}
     
     **Errors:**
     - 404: Project not found
@@ -366,13 +410,35 @@ async def delete_project_endpoint(
         
         user_id = get_current_user_id(authorization)
         
-        # Delete project
+        # Get project to retrieve S3 folder path
+        project = get_project_by_user(db, project_id, user_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found or not authorized")
+        
+        # S3 RESTRUCTURING: Delete S3 folder and all contents
+        s3_cleaned = False
+        if project.s3_project_folder:
+            try:
+                s3_cleaned = await delete_project_folder(str(project_id))
+                if s3_cleaned:
+                    logger.info(f"✅ Deleted S3 folder: {project.s3_project_folder}")
+                else:
+                    logger.warning(f"⚠️ Partial S3 cleanup for {project_id}")
+            except Exception as e:
+                logger.error(f"⚠️ S3 cleanup error (non-critical): {e}")
+                # Continue with database deletion anyway
+        
+        # Delete project from database
         success = delete_project(db, project_id, user_id)
         
         if not success:
             raise HTTPException(status_code=404, detail="Project not found or not authorized")
         
-        return {"status": "deleted", "project_id": str(project_id)}
+        return {
+            "status": "deleted",
+            "project_id": str(project_id),
+            "s3_cleaned": s3_cleaned
+        }
     
     except HTTPException:
         raise

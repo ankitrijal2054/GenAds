@@ -166,8 +166,8 @@ class AudioEngine:
 
                     audio_data = await resp.read()
 
-            # Upload to S3
-            s3_key = f"projects/{project_id}/music_{mood}.mp3"
+            # Upload to S3 (S3 RESTRUCTURING: Use new project folder structure)
+            s3_key = f"projects/{project_id}/draft/music/music_{mood}.mp3"
 
             self.s3_client.put_object(
                 Bucket=self.s3_bucket_name,
@@ -179,7 +179,7 @@ class AudioEngine:
 
             s3_url = f"https://{self.s3_bucket_name}.s3.{self.aws_region}.amazonaws.com/{s3_key}"
 
-            logger.info(f"Music uploaded to S3: {s3_url}")
+            logger.info(f"✅ Music uploaded to S3: {s3_url}")
             return s3_url
 
         except Exception as e:

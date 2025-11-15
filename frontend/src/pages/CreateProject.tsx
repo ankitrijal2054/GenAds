@@ -2,9 +2,9 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Container, Header } from '@/components/layout'
-import { Button, Card, CardContent, CardHeader, CardTitle, Input, Select } from '@/components/ui'
+import { Button, Card, CardContent, CardHeader, CardTitle, Input, Select, Modal } from '@/components/ui'
 import { useProjects } from '@/hooks/useProjects'
-import { Upload, X } from 'lucide-react'
+import { Upload, X, Zap } from 'lucide-react'
 
 const moods = [
   { value: 'uplifting', label: '✨ Uplifting - Positive, energetic vibe' },
@@ -33,6 +33,8 @@ export const CreateProject = () => {
   const [productImage, setProductImage] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string>('')
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [showConfirmation, setShowConfirmation] = useState(false)
+  const [autoGenerate, setAutoGenerate] = useState(true)
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -66,32 +68,53 @@ export const CreateProject = () => {
     setImagePreview('')
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setSubmitError(null)
-
-    // Validation
+  const validateForm = (): boolean => {
     if (!formData.title.trim()) {
       setSubmitError('Project title is required')
-      return
+      return false
     }
 
     if (!formData.brief.trim()) {
       setSubmitError('Product brief is required')
-      return
+      return false
     }
 
     if (!formData.brand_name.trim()) {
       setSubmitError('Brand name is required')
-      return
+      return false
     }
 
     if (formData.duration < 15 || formData.duration > 120) {
       setSubmitError('Duration must be between 15 and 120 seconds')
+      return false
+    }
+
+    return true
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSubmitError(null)
+
+    if (!validateForm()) {
       return
     }
 
+    // Show confirmation modal instead of creating directly
+    setShowConfirmation(true)
+  }
+
+  const handleConfirmCreate = async () => {
+    setShowConfirmation(false)
+    
     try {
+      console.log('🚀 Creating project with data:', {
+        title: formData.title,
+        brand_name: formData.brand_name,
+        mood: formData.mood,
+        duration: formData.duration,
+      })
+
       const newProject = await createProject({
         title: formData.title,
         brief: formData.brief,
@@ -103,11 +126,21 @@ export const CreateProject = () => {
         product_image_url: formData.product_image_url || undefined,
       })
 
-      // Redirect to progress page
-      navigate(`/projects/${newProject.id}/progress`)
+      console.log('✅ Project created:', newProject)
+
+      // Navigate immediately or to dashboard based on autoGenerate
+      if (autoGenerate) {
+        console.log('📍 Navigating to progress page:', `/projects/${newProject.id}/progress`)
+        navigate(`/projects/${newProject.id}/progress`)
+      } else {
+        console.log('📍 Navigating to dashboard')
+        navigate('/dashboard')
+      }
     } catch (err) {
+      console.error('❌ Error creating project:', err)
       const message = err instanceof Error ? err.message : 'Failed to create project'
       setSubmitError(message)
+      setShowConfirmation(true) // Show modal again so user can edit
     }
   }
 
@@ -378,6 +411,126 @@ export const CreateProject = () => {
           </motion.div>
         </Container>
       </div>
+
+      {/* Confirmation Modal */}
+      <Modal
+        isOpen={showConfirmation}
+        onClose={() => setShowConfirmation(false)}
+        title="Review Your Project"
+        description="Confirm the details before creating your project"
+        size="lg"
+      >
+        <div className="space-y-6">
+          {/* Project Details Review */}
+          <div className="space-y-4 bg-slate-900/50 p-4 rounded-lg">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-semibold text-slate-400 uppercase">
+                  Project Title
+                </label>
+                <p className="text-slate-100 mt-1">{formData.title}</p>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-400 uppercase">
+                  Brand Name
+                </label>
+                <p className="text-slate-100 mt-1">{formData.brand_name}</p>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-400 uppercase">
+                Product Brief
+              </label>
+              <p className="text-slate-100 mt-1 text-sm">{formData.brief}</p>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="text-xs font-semibold text-slate-400 uppercase">
+                  Video Mood
+                </label>
+                <p className="text-slate-100 mt-1 capitalize">{formData.mood}</p>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-400 uppercase">
+                  Duration
+                </label>
+                <p className="text-slate-100 mt-1">{formData.duration}s</p>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-400 uppercase">
+                  Primary Color
+                </label>
+                <div className="flex items-center gap-2 mt-1">
+                  <div
+                    className="w-6 h-6 rounded border border-slate-600"
+                    style={{ backgroundColor: formData.primary_color }}
+                  />
+                  <span className="text-slate-100 text-sm">{formData.primary_color}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Cost Estimate */}
+          <div className="bg-emerald-500/10 border border-emerald-500/50 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Zap className="w-4 h-4 text-emerald-400" />
+              <span className="text-xs font-semibold text-emerald-400 uppercase">
+                Estimated Cost
+              </span>
+            </div>
+            <p className="text-2xl font-bold text-emerald-400">$0.19 - $0.43</p>
+            <p className="text-xs text-emerald-300 mt-1">
+              Final cost may vary based on complexity
+            </p>
+          </div>
+
+          {/* Auto-Generate Option */}
+          <div className="flex items-center gap-3 p-3 bg-indigo-500/10 border border-indigo-500/30 rounded-lg">
+            <input
+              type="checkbox"
+              id="autoGenerate"
+              checked={autoGenerate}
+              onChange={(e) => setAutoGenerate(e.target.checked)}
+              className="w-4 h-4 rounded accent-indigo-600 cursor-pointer"
+            />
+            <label htmlFor="autoGenerate" className="flex-1 cursor-pointer">
+              <p className="text-sm font-medium text-slate-100">
+                Start generation immediately
+              </p>
+              <p className="text-xs text-slate-400">
+                {autoGenerate
+                  ? 'You will be taken to the progress page'
+                  : 'Project will be saved as draft'}
+              </p>
+            </label>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex gap-3 pt-4 border-t border-slate-700">
+            <Button
+              type="button"
+              variant="outline"
+              fullWidth
+              onClick={() => setShowConfirmation(false)}
+              disabled={loading}
+            >
+              Edit
+            </Button>
+            <Button
+              type="button"
+              variant="gradient"
+              fullWidth
+              onClick={handleConfirmCreate}
+              disabled={loading}
+            >
+              {loading ? 'Creating...' : 'Create Project'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

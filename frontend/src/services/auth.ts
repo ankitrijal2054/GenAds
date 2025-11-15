@@ -10,8 +10,14 @@ import type { User } from '../types'
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || ''
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
 
-// Initialize Supabase client
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+// Initialize Supabase client with error handling
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+  },
+})
 
 /**
  * Sign up a new user
@@ -127,26 +133,34 @@ export const getCurrentUser = async (): Promise<User | null> => {
 }
 
 /**
- * Listen to auth state changes
+ * Listen to auth state changes with error handling
  */
 export const onAuthStateChange = (
   callback: (user: User | null) => void
 ) => {
-  return supabase.auth.onAuthStateChange((_event, session) => {
-    if (session?.user) {
-      const user: User = {
-        id: session.user.id,
-        email: session.user.email || '',
-        created_at: session.user.created_at,
+  try {
+    return supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        const user: User = {
+          id: session.user.id,
+          email: session.user.email || '',
+          created_at: session.user.created_at,
+        }
+        localStorage.setItem('authToken', session.access_token)
+        localStorage.setItem('user', JSON.stringify(user))
+        callback(user)
+      } else {
+        localStorage.removeItem('authToken')
+        localStorage.removeItem('user')
+        callback(null)
       }
-      localStorage.setItem('authToken', session.access_token)
-      localStorage.setItem('user', JSON.stringify(user))
-      callback(user)
-    } else {
-      localStorage.removeItem('authToken')
-      localStorage.removeItem('user')
-      callback(null)
-    }
-  })
+    })
+  } catch (error) {
+    // If auth state change fails, treat as no user
+    console.warn('Auth state change error:', error)
+    localStorage.removeItem('authToken')
+    localStorage.removeItem('user')
+    callback(null)
+  }
 }
 

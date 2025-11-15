@@ -267,7 +267,9 @@ class Renderer:
     ) -> str:
         """Upload final video to S3."""
         try:
-            s3_key = f"projects/{project_id}/final_{aspect_ratio.replace(':', '_')}.mp4"
+            # S3 RESTRUCTURING: Use new project folder structure with final/ subfolder
+            aspect_tag = aspect_ratio.replace(':', '_')
+            s3_key = f"projects/{project_id}/final/{project_id}_{aspect_tag}.mp4"
 
             file_size = video_path.stat().st_size
             logger.info(f"Uploading final video ({file_size / 1024 / 1024:.1f}MB)...")

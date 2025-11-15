@@ -317,7 +317,8 @@ class TextOverlayRenderer:
     async def _upload_video_to_s3(self, video_path: Path, project_id: str, scene_index: int = 0) -> str:
         """Upload video to S3."""
         try:
-            s3_key = f"projects/{project_id}/scene_{scene_index:02d}_overlaid.mp4"
+            # S3 RESTRUCTURING: Use new project folder structure
+            s3_key = f"projects/{project_id}/draft/text_overlays/scene_{scene_index:02d}_text.mp4"
 
             with open(video_path, "rb") as f:
                 self.s3_client.put_object(

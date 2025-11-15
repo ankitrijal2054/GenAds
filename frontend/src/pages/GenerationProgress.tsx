@@ -11,8 +11,31 @@ import { ArrowLeft } from 'lucide-react'
 export const GenerationProgress = () => {
   const { projectId = '' } = useParams()
   const navigate = useNavigate()
-  const { cancelGeneration } = useGeneration()
+  const { cancelGeneration, generateVideo } = useGeneration()
   const [isCancelling, setIsCancelling] = useState(false)
+  const [isStartingGeneration, setIsStartingGeneration] = useState(false)
+
+  // Start generation job when component mounts
+  useEffect(() => {
+    const startGenerationIfNeeded = async () => {
+      if (!projectId || isStartingGeneration) return
+      
+      try {
+        setIsStartingGeneration(true)
+        console.log('🚀 Starting generation for project:', projectId)
+        
+        // Queue the job in Redis
+        const result = await generateVideo(projectId)
+        console.log('✅ Generation queued:', result)
+      } catch (err) {
+        console.error('❌ Failed to queue generation:', err)
+      } finally {
+        setIsStartingGeneration(false)
+      }
+    }
+    
+    startGenerationIfNeeded()
+  }, [projectId, generateVideo])
 
   const { progress, isPolling, stopPolling, startPolling } = useProgressPolling({
     projectId,

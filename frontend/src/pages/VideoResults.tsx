@@ -5,7 +5,8 @@ import { Container, Header } from '@/components/layout'
 import { Button, Card, CardContent, CardHeader, CardTitle, Badge } from '@/components/ui'
 import { VideoPlayer } from '@/components/PageComponents'
 import { useProjects } from '@/hooks/useProjects'
-import { ArrowLeft, Download, Copy, Check } from 'lucide-react'
+import { api } from '@/services/api'
+import { ArrowLeft, Download, Copy, Check, Trash2 } from 'lucide-react'
 
 export const VideoResults = () => {
   const { projectId = '' } = useParams()
@@ -18,6 +19,7 @@ export const VideoResults = () => {
   const [aspect, setAspect] = useState<'9:16' | '1:1' | '16:9'>('9:16')
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
   const [downloadingAspect, setDownloadingAspect] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     const fetchProject = async () => {
@@ -88,6 +90,24 @@ export const VideoResults = () => {
     navigator.clipboard.writeText(url)
     setCopiedUrl(url)
     setTimeout(() => setCopiedUrl(null), 2000)
+  }
+
+  // S3 RESTRUCTURING: Delete project and S3 folder
+  const handleDeleteProject = async () => {
+    if (!confirm('Delete this project? This will remove all videos and project files from storage. This action cannot be undone.')) {
+      return
+    }
+
+    try {
+      setDeleting(true)
+      await api.delete(`/api/projects/${projectId}/`)
+      // Redirect to dashboard after successful deletion
+      navigate('/dashboard', { replace: true })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to delete project'
+      setError(message)
+      setDeleting(false)
+    }
   }
 
   const aspectInfo = {
@@ -290,6 +310,38 @@ export const VideoResults = () => {
               </Card>
             </motion.div>
 
+            {/* S3 Folder Information */}
+            {project.s3_project_folder_url && (
+              <motion.div variants={itemVariants}>
+                <Card variant="glass">
+                  <CardHeader>
+                    <CardTitle className="text-sm">📁 Project Storage</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-xs text-slate-400 mb-2">S3 Project Folder:</p>
+                    <div className="flex items-center gap-2 p-2 bg-slate-900/50 border border-slate-700 rounded">
+                      <input
+                        type="text"
+                        value={project.s3_project_folder_url}
+                        readOnly
+                        className="flex-1 bg-transparent text-slate-300 text-xs font-mono outline-none truncate"
+                      />
+                      <button
+                        onClick={() => handleCopyUrl(project.s3_project_folder_url)}
+                        className="p-1.5 hover:bg-slate-700 rounded transition-colors flex-shrink-0"
+                      >
+                        {copiedUrl === project.s3_project_folder_url ? (
+                          <Check className="w-3 h-3 text-emerald-400" />
+                        ) : (
+                          <Copy className="w-3 h-3 text-slate-400" />
+                        )}
+                      </button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )}
+
             {/* Project Details */}
             <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Details Card */}
@@ -396,7 +448,7 @@ export const VideoResults = () => {
             {/* Action Buttons */}
             <motion.div
               variants={itemVariants}
-              className="flex gap-4 justify-center pt-4"
+              className="flex gap-4 justify-center pt-4 flex-wrap"
             >
               <Button
                 variant="outline"
@@ -410,6 +462,25 @@ export const VideoResults = () => {
                 className="gap-2"
               >
                 Create Another
+              </Button>
+              {/* S3 RESTRUCTURING: Delete project button */}
+              <Button
+                variant="outline"
+                onClick={handleDeleteProject}
+                disabled={deleting}
+                className="gap-2 border-red-500/50 text-red-400 hover:bg-red-500/10"
+              >
+                {deleting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    Delete Project
+                  </>
+                )}
               </Button>
             </motion.div>
           </motion.div>

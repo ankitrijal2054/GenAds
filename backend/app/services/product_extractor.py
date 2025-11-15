@@ -146,8 +146,8 @@ class ProductExtractor:
             image.save(png_buffer, format="PNG")
             png_buffer.seek(0)
 
-            # Upload to S3
-            s3_key = f"projects/{project_id}/product_extracted.png"
+            # Upload to S3 (S3 RESTRUCTURING: Use new project folder structure)
+            s3_key = f"projects/{project_id}/draft/product/extracted.png"
 
             self.s3_client.put_object(
                 Bucket=self.s3_bucket_name,
@@ -160,7 +160,7 @@ class ProductExtractor:
             # Generate URL
             s3_url = f"https://{self.s3_bucket_name}.s3.{self.aws_region}.amazonaws.com/{s3_key}"
 
-            logger.info(f"Uploaded product to S3: {s3_url}")
+            logger.info(f"✅ Uploaded product to S3: {s3_url}")
             return s3_url
 
         except ClientError as e:

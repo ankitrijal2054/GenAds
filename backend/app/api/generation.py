@@ -28,7 +28,8 @@ except Exception as e:
 # Generation Endpoints
 # ============================================================================
 
-@router.post("/projects/{project_id}/generate")
+@router.post("/projects/{project_id}/generate", deprecated=False)
+@router.post("/projects/{project_id}/generate/", deprecated=False)
 async def trigger_generation(
     project_id: UUID,
     db: Session = Depends(get_db),

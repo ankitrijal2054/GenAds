@@ -358,7 +358,8 @@ class Compositor:
     async def _upload_video_to_s3(self, video_path: Path, project_id: str, scene_index: int = 0) -> str:
         """Upload composited video to S3."""
         try:
-            s3_key = f"projects/{project_id}/scene_{scene_index:02d}_composited.mp4"
+            # S3 RESTRUCTURING: Use new project folder structure
+            s3_key = f"projects/{project_id}/draft/composited_videos/scene_{scene_index:02d}_composited.mp4"
 
             with open(video_path, "rb") as f:
                 self.s3_client.put_object(
@@ -370,7 +371,7 @@ class Compositor:
                 )
 
             s3_url = f"https://{self.s3_bucket_name}.s3.{self.aws_region}.amazonaws.com/{s3_key}"
-            logger.info(f"Uploaded to S3: {s3_url}")
+            logger.info(f"✅ Uploaded to S3: {s3_url}")
 
             return s3_url
 
