@@ -11,7 +11,7 @@ import { Plus, TrendingUp, Video, Zap } from 'lucide-react'
 export const Dashboard = () => {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
-  const { projects, loading, error, fetchProjects } = useProjects()
+  const { projects, loading, error, fetchProjects, deleteProject } = useProjects()
 
   useEffect(() => {
     fetchProjects()
@@ -22,12 +22,15 @@ export const Dashboard = () => {
   }
 
   const handleViewProject = (projectId: string) => {
+    console.log('handleViewProject called with:', projectId)
     const project = projects.find((p) => p.id === projectId)
-    if (project?.status === 'ready') {
+    console.log('Project found:', project)
+    const isReady = project?.status === 'ready' || project?.status === 'COMPLETED'
+    if (isReady) {
+      console.log('Navigating to results page')
       navigate(`/projects/${projectId}/results`)
-    } else if (project?.status === 'generating') {
-      navigate(`/projects/${projectId}/progress`)
     } else {
+      console.log('Navigating to progress page, status:', project?.status)
       navigate(`/projects/${projectId}/progress`)
     }
   }
@@ -39,8 +42,7 @@ export const Dashboard = () => {
       )
     ) {
       try {
-        // TODO: Implement delete
-        console.log('Delete project:', projectId)
+        await deleteProject(projectId)
       } catch (err) {
         console.error('Failed to delete project:', err)
       }

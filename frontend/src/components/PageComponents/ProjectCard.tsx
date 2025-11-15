@@ -6,7 +6,7 @@ interface ProjectCardProps {
   id?: string
   title: string
   brief?: string
-  status: 'draft' | 'generating' | 'ready' | 'failed'
+  status: 'draft' | 'generating' | 'ready' | 'failed' | 'COMPLETED'
   progress?: number
   createdAt?: string
   updatedAt?: string
@@ -16,18 +16,20 @@ interface ProjectCardProps {
   onDelete?: () => void
 }
 
-const statusColors = {
+const statusColors: Record<string, string> = {
   draft: 'slate',
   generating: 'indigo',
   ready: 'emerald',
   failed: 'red',
+  COMPLETED: 'emerald',
 }
 
-const statusLabels = {
+const statusLabels: Record<string, string> = {
   draft: 'Draft',
   generating: 'Generating...',
   ready: 'Ready',
   failed: 'Failed',
+  COMPLETED: 'Completed',
 }
 
 export const ProjectCard = ({
@@ -55,11 +57,29 @@ export const ProjectCard = ({
     hover: { y: -8, transition: { duration: 0.2 } },
   }
 
+  const isClickable = status !== 'failed' && onView
+  
+  const handleCardClick = () => {
+    if (isClickable) {
+      console.log('Card clicked - navigating to project:', title, status)
+      onView?.()
+    }
+  }
+  
   return (
-    <motion.div variants={variants} whileHover="hover">
+    <motion.div 
+      variants={variants} 
+      whileHover="hover"
+      onClick={handleCardClick}
+      className={isClickable ? 'cursor-pointer' : ''}
+    >
       <Card
         variant="glass"
-        className="h-full overflow-hidden border border-slate-700/50 hover:border-indigo-500/50 transition-all"
+        className={`h-full overflow-hidden border transition-all ${
+          isClickable 
+            ? 'border-slate-700/50 hover:border-indigo-500/50 cursor-pointer' 
+            : 'border-slate-700/50'
+        }`}
       >
         <CardHeader className="pb-3">
           <div className="flex justify-between items-start gap-2">
@@ -112,32 +132,28 @@ export const ProjectCard = ({
 
           {/* Actions */}
           <div className="flex gap-2 pt-2">
-            {(status === 'ready' || status === 'draft') && onView && (
-              <Button
-                size="sm"
-                variant="gradient"
-                onClick={onView}
-                className="flex-1 gap-2"
-              >
-                <Play className="w-4 h-4" />
-                {status === 'ready' ? 'View' : 'Continue'}
-              </Button>
-            )}
             {status === 'draft' && onEdit && (
               <Button
                 size="sm"
                 variant="outline"
-                onClick={onEdit}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onEdit()
+                }}
                 className="flex-1 gap-2"
               >
                 <Edit3 className="w-4 h-4" />
+                Edit
               </Button>
             )}
             {onDelete && (
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={onDelete}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onDelete()
+                }}
                 className="gap-2 text-red-400 hover:text-red-300 hover:bg-red-500/10"
               >
                 <Trash2 className="w-4 h-4" />

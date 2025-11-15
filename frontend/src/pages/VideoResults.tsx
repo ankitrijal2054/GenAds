@@ -17,6 +17,7 @@ export const VideoResults = () => {
   const [error, setError] = useState<string | null>(null)
   const [aspect, setAspect] = useState<'9:16' | '1:1' | '16:9'>('9:16')
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
+  const [downloadingAspect, setDownloadingAspect] = useState<string | null>(null)
 
   useEffect(() => {
     const fetchProject = async () => {
@@ -32,12 +33,55 @@ export const VideoResults = () => {
       }
     }
 
-    fetchProject()
+    if (projectId) {
+      fetchProject()
+    }
   }, [projectId, getProject])
 
-  const handleDownload = (aspect: string) => {
-    // TODO: Implement download
-    console.log(`Download ${aspect} video`)
+  const handleDownload = (aspectRatio: '9:16' | '1:1' | '16:9') => {
+    const videoUrl = project.output_videos?.[aspectRatio]
+    if (!videoUrl) {
+      setError('Video URL not available')
+      return
+    }
+
+    try {
+      setDownloadingAspect(aspectRatio)
+      
+      // Create a temporary anchor element for download
+      const link = document.createElement('a')
+      link.href = videoUrl
+      
+      // Generate filename based on aspect ratio
+      const aspectNames: Record<string, string> = {
+        '9:16': 'vertical',
+        '1:1': 'square',
+        '16:9': 'horizontal',
+      }
+      const resolutions: Record<string, string> = {
+        '9:16': '1080x1920',
+        '1:1': '1080x1080',
+        '16:9': '1920x1080',
+      }
+      
+      const timestamp = new Date().toISOString().slice(0, 10)
+      const projectTitle = project?.title ? project.title.replace(/\s+/g, '-') : 'video'
+      const filename = `${projectTitle}_${aspectNames[aspectRatio]}_${resolutions[aspectRatio]}_${timestamp}.mp4`
+      
+      link.setAttribute('download', filename)
+      link.style.display = 'none'
+      
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      
+      // Clear the downloading state after a short delay
+      setTimeout(() => setDownloadingAspect(null), 1000)
+    } catch (err) {
+      console.error('Download failed:', err)
+      setError('Failed to download video')
+      setDownloadingAspect(null)
+    }
   }
 
   const handleCopyUrl = (url: string) => {
@@ -225,10 +269,20 @@ export const VideoResults = () => {
                         size="sm"
                         variant="gradient"
                         onClick={() => handleDownload(ar)}
+                        disabled={downloadingAspect === ar}
                         className="gap-2"
                       >
-                        <Download className="w-4 h-4" />
-                        Download
+                        {downloadingAspect === ar ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-slate-300 border-t-white rounded-full animate-spin" />
+                            Downloading...
+                          </>
+                        ) : (
+                          <>
+                            <Download className="w-4 h-4" />
+                            Download
+                          </>
+                        )}
                       </Button>
                     </div>
                   ))}
@@ -263,7 +317,7 @@ export const VideoResults = () => {
                   <div>
                     <p className="text-slate-500">Mood</p>
                     <Badge variant="secondary" className="capitalize">
-                      {project.mood.replace(/_/g, ' ')}
+                      {project.mood ? project.mood.replace(/_/g, ' ') : 'N/A'}
                     </Badge>
                   </div>
                 </CardContent>

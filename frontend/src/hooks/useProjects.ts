@@ -7,13 +7,14 @@ export interface Project {
   title: string
   brief: string
   brand_name: string
-  mood: string
+  mood?: string
   duration: number
-  status: 'draft' | 'generating' | 'ready' | 'failed'
+  status: 'draft' | 'generating' | 'ready' | 'failed' | 'COMPLETED'
   created_at: string
   updated_at: string
   cost_estimate?: number
   output_videos?: Record<string, string>
+  progress?: number
 }
 
 interface CreateProjectInput {
@@ -81,6 +82,7 @@ export const useProjects = () => {
 
   // Get single project
   const getProject = useCallback(async (projectId: string) => {
+    if (!projectId) throw new Error('Project ID is required')
     try {
       const response = await apiClient.get(`/api/projects/${projectId}/`)
       return response.data
