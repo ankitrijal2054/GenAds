@@ -1,6 +1,6 @@
 """API endpoints for project management."""
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Header
 from sqlalchemy.orm import Session
 from uuid import UUID
 import logging
@@ -23,27 +23,14 @@ from app.models.schemas import (
     ProjectListResponse,
     ErrorResponse
 )
+from app.api.auth import get_current_user_id
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
-# ============================================================================
-# Helper Functions
-# ============================================================================
-
-def get_current_user_id() -> UUID:
-    """
-    Get current user ID from authentication.
-    TODO: Integrate with Supabase Auth
-    For now, accepts X-User-ID header for testing.
-    """
-    # In production, this would extract from JWT token
-    # For Phase 1, we'll use a header for testing
-    # This will be replaced with proper Supabase Auth
-    user_id = UUID("00000000-0000-0000-0000-000000000001")  # Test user
-    return user_id
+# Note: get_current_user_id imported from app.api.auth
 
 
 # ============================================================================
@@ -53,32 +40,50 @@ def get_current_user_id() -> UUID:
 @router.post("/", response_model=ProjectResponse)
 async def create_new_project(
     request: CreateProjectRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    authorization: str = Header(None)
 ):
     """
     Create a new ad generation project.
     
+    **Headers:**
+    - Authorization: Bearer {token} (optional in development)
+    
     **Request Body:**
-    - title: Project title
-    - brief: Product brief/description
+    - title: Project title (max 200 chars)
+    - brief: Product brief/description (10-2000 chars)
     - duration: Video duration (15-120 seconds)
-    - mood: Video mood (uplifting, dramatic, energetic, calm)
-    - brand_name: Brand name
-    - primary_color: Primary brand color (hex)
+    - mood: Video mood (uplifting, dramatic, energetic, calm, luxurious, playful)
+    - brand_name: Brand name (max 100 chars)
+    - primary_color: Primary brand color (hex #RRGGBB or #RRGGBBAA)
     - secondary_color: (optional) Secondary brand color (hex)
     
     **Response:** ProjectResponse with newly created project
     
     **Errors:**
-    - 400: Invalid input
+    - 400: Invalid input (validation errors)
+    - 401: Missing or invalid authorization
     - 500: Database error
+    
+    **Example:**
+    ```json
+    {
+      "title": "Summer Skincare Campaign",
+      "brief": "Premium hydrating serum with SPF for sensitive skin",
+      "duration": 30,
+      "mood": "uplifting",
+      "brand_name": "HydraGlow",
+      "primary_color": "#4dbac7",
+      "secondary_color": "#ffffff"
+    }
+    ```
     """
     try:
         # Initialize database if needed
         init_db()
         
-        # Get current user (TODO: from Auth)
-        user_id = get_current_user_id()
+        # Get current user from auth
+        user_id = get_current_user_id(authorization)
         
         # Create brand config
         brand_config = {
@@ -139,7 +144,8 @@ async def create_new_project(
 @router.get("/{project_id}", response_model=ProjectDetailResponse)
 async def get_project_details(
     project_id: UUID,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    authorization: str = Header(None)
 ):
     """
     Get detailed information about a specific project.
@@ -147,16 +153,20 @@ async def get_project_details(
     **Path Parameters:**
     - project_id: UUID of the project
     
+    **Headers:**
+    - Authorization: Bearer {token} (optional in development)
+    
     **Response:** ProjectDetailResponse with full configuration
     
     **Errors:**
     - 404: Project not found
     - 403: Not authorized to view this project
+    - 401: Missing or invalid authorization
     """
     try:
         init_db()
         
-        user_id = get_current_user_id()
+        user_id = get_current_user_id(authorization)
         
         # Get project and verify ownership
         project = get_project_by_user(db, project_id, user_id)
@@ -178,25 +188,30 @@ async def list_user_projects(
     limit: int = Query(50, ge=1, le=100, description="Max projects to return"),
     offset: int = Query(0, ge=0, description="Number of projects to skip"),
     status: str = Query(None, description="Filter by status (optional)"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    authorization: str = Header(None)
 ):
     """
-    List all projects for the current user.
+    List all projects for the current user with pagination.
     
     **Query Parameters:**
     - limit: Maximum number of projects (1-100, default 50)
     - offset: Number of projects to skip (default 0)
-    - status: (optional) Filter by status (e.g., "COMPLETED", "FAILED")
+    - status: (optional) Filter by status (PENDING, QUEUED, EXTRACTING_PRODUCT, PLANNING, GENERATING_SCENES, COMPOSITING, ADDING_OVERLAYS, GENERATING_AUDIO, RENDERING, COMPLETED, FAILED)
+    
+    **Headers:**
+    - Authorization: Bearer {token} (optional in development)
     
     **Response:** ProjectListResponse with list of projects
     
     **Errors:**
     - 400: Invalid query parameters
+    - 401: Missing or invalid authorization
     """
     try:
         init_db()
         
-        user_id = get_current_user_id()
+        user_id = get_current_user_id(authorization)
         
         # Get projects
         projects = get_user_projects(
@@ -226,26 +241,35 @@ async def list_user_projects(
 
 @router.get("/stats/summary", response_model=dict)
 async def get_user_stats(
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    authorization: str = Header(None)
 ):
     """
     Get generation statistics for the current user.
     
+    **Headers:**
+    - Authorization: Bearer {token} (optional in development)
+    
     **Response:**
-    - total_projects: Total projects created
-    - completed: Completed projects
-    - failed: Failed projects
-    - in_progress: Currently generating
-    - total_cost: Total spending in USD
-    - success_rate: Success percentage
+    ```json
+    {
+      "total_projects": 10,
+      "completed": 8,
+      "failed": 1,
+      "in_progress": 1,
+      "total_cost": 8.50,
+      "success_rate": 80.0
+    }
+    ```
     
     **Errors:**
+    - 401: Missing or invalid authorization
     - 500: Database error
     """
     try:
         init_db()
         
-        user_id = get_current_user_id()
+        user_id = get_current_user_id(authorization)
         
         stats = get_generation_stats(db, user_id)
         
@@ -264,13 +288,17 @@ async def get_user_stats(
 async def update_project_details(
     project_id: UUID,
     request: dict,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    authorization: str = Header(None)
 ):
     """
     Update project details (title, brief, etc).
     
     **Path Parameters:**
     - project_id: UUID of the project
+    
+    **Headers:**
+    - Authorization: Bearer {token} (optional in development)
     
     **Request Body:**
     - Flexible: any project fields to update
@@ -280,11 +308,12 @@ async def update_project_details(
     **Errors:**
     - 404: Project not found
     - 403: Not authorized
+    - 401: Missing or invalid authorization
     """
     try:
         init_db()
         
-        user_id = get_current_user_id()
+        user_id = get_current_user_id(authorization)
         
         # Verify ownership
         project = get_project_by_user(db, project_id, user_id)
@@ -313,7 +342,8 @@ async def update_project_details(
 @router.delete("/{project_id}")
 async def delete_project_endpoint(
     project_id: UUID,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    authorization: str = Header(None)
 ):
     """
     Delete a project (only if owned by current user).
@@ -321,16 +351,20 @@ async def delete_project_endpoint(
     **Path Parameters:**
     - project_id: UUID of the project to delete
     
+    **Headers:**
+    - Authorization: Bearer {token} (optional in development)
+    
     **Response:** {"status": "deleted", "project_id": "..."}
     
     **Errors:**
     - 404: Project not found
     - 403: Not authorized
+    - 401: Missing or invalid authorization
     """
     try:
         init_db()
         
-        user_id = get_current_user_id()
+        user_id = get_current_user_id(authorization)
         
         # Delete project
         success = delete_project(db, project_id, user_id)

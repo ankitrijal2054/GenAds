@@ -1,6 +1,6 @@
 """API endpoints for generation control."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
 from uuid import UUID
 import logging
@@ -10,6 +10,7 @@ from app.database.connection import get_db, init_db
 from app.database.crud import get_project_by_user, update_project_status
 from app.models.schemas import GenerationProgressResponse
 from app.jobs.worker import create_worker
+from app.api.auth import get_current_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -24,24 +25,14 @@ except Exception as e:
 
 
 # ============================================================================
-# Helper Functions
-# ============================================================================
-
-def get_current_user_id() -> UUID:
-    """Get current user ID from authentication."""
-    # TODO: Integrate with Supabase Auth
-    user_id = UUID("00000000-0000-0000-0000-000000000001")  # Test user
-    return user_id
-
-
-# ============================================================================
 # Generation Endpoints
 # ============================================================================
 
 @router.post("/projects/{project_id}/generate")
 async def trigger_generation(
     project_id: UUID,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    authorization: str = Header(None)
 ):
     """
     Trigger video generation for a project.
@@ -49,12 +40,16 @@ async def trigger_generation(
     **Path Parameters:**
     - project_id: UUID of the project to generate
     
+    **Headers:**
+    - Authorization: Bearer {token} (optional in development)
+    
     **Response:** 
     ```json
     {
         "status": "queued",
         "job_id": "...",
-        "message": "Generation job enqueued"
+        "message": "Generation job enqueued",
+        "project_id": "..."
     }
     ```
     
@@ -62,7 +57,9 @@ async def trigger_generation(
     - 404: Project not found
     - 403: Not authorized
     - 409: Generation already in progress
-    - 500: Failed to enqueue job or worker not available
+    - 401: Missing or invalid authorization
+    - 503: Worker not available
+    - 500: Failed to enqueue job
     """
     try:
         if not worker_config:
@@ -73,7 +70,7 @@ async def trigger_generation(
         
         init_db()
         
-        user_id = get_current_user_id()
+        user_id = get_current_user_id(authorization)
         
         # Get project and verify ownership
         project = get_project_by_user(db, project_id, user_id)
@@ -151,7 +148,8 @@ async def get_job_status(job_id: str):
 @router.post("/projects/{project_id}/reset")
 async def reset_project_status(
     project_id: UUID,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    authorization: str = Header(None)
 ):
     """
     Reset a stuck project to FAILED status so it can be retried.
@@ -162,19 +160,27 @@ async def reset_project_status(
     **Path Parameters:**
     - project_id: UUID of the project to reset
     
+    **Headers:**
+    - Authorization: Bearer {token} (optional in development)
+    
     **Response:**
     ```json
     {
         "status": "reset",
         "project_id": "...",
-        "message": "Project reset to FAILED status"
+        "message": "Project reset to FAILED status. You can now retry generation."
     }
     ```
+    
+    **Errors:**
+    - 404: Project not found
+    - 403: Not authorized
+    - 401: Missing or invalid authorization
     """
     try:
         init_db()
         
-        user_id = get_current_user_id()
+        user_id = get_current_user_id(authorization)
         
         # Get project and verify ownership
         project = get_project_by_user(db, project_id, user_id)
@@ -254,7 +260,8 @@ async def cancel_job(job_id: str):
 @router.get("/projects/{project_id}/progress", response_model=GenerationProgressResponse)
 async def get_generation_progress(
     project_id: UUID,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    authorization: str = Header(None)
 ):
     """
     Get current generation progress for a project.
@@ -262,16 +269,32 @@ async def get_generation_progress(
     **Path Parameters:**
     - project_id: UUID of the project
     
+    **Headers:**
+    - Authorization: Bearer {token} (optional in development)
+    
     **Response:** GenerationProgressResponse with current status
+    
+    **Example Response:**
+    ```json
+    {
+      "project_id": "550e8400-e29b-41d4-a716-446655440000",
+      "status": "GENERATING_SCENES",
+      "progress": 25,
+      "current_step": "Generating Video Scenes",
+      "cost_so_far": 0.12,
+      "error_message": null
+    }
+    ```
     
     **Errors:**
     - 404: Project not found
     - 403: Not authorized
+    - 401: Missing or invalid authorization
     """
     try:
         init_db()
         
-        user_id = get_current_user_id()
+        user_id = get_current_user_id(authorization)
         
         # Get project and verify ownership
         project = get_project_by_user(db, project_id, user_id)
@@ -312,13 +335,17 @@ async def get_generation_progress(
 @router.post("/projects/{project_id}/cancel")
 async def cancel_generation(
     project_id: UUID,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    authorization: str = Header(None)
 ):
     """
     Cancel an in-progress generation (if possible).
     
     **Path Parameters:**
     - project_id: UUID of the project
+    
+    **Headers:**
+    - Authorization: Bearer {token} (optional in development)
     
     **Response:**
     ```json
@@ -333,11 +360,12 @@ async def cancel_generation(
     - 404: Project not found
     - 403: Not authorized
     - 409: Cannot cancel (not in progress)
+    - 401: Missing or invalid authorization
     """
     try:
         init_db()
         
-        user_id = get_current_user_id()
+        user_id = get_current_user_id(authorization)
         
         # Get project and verify ownership
         project = get_project_by_user(db, project_id, user_id)
