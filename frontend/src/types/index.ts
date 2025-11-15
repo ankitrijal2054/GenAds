@@ -51,15 +51,14 @@ export interface Project {
 }
 
 export interface CreateProjectInput {
-  projectName: string
+  title: string
   brief: string
-  brandName: string
-  primaryColor: string
-  secondaryColor: string
-  targetAudience: string
+  brand_name: string
+  mood: string
   duration: number
-  mood: string[]
-  productImage?: File
+  primary_color: string
+  secondary_color?: string
+  product_image_url?: string
 }
 
 // Generation Types

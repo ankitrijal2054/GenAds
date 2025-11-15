@@ -1,9 +1,14 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  // Content paths - these are scanned for class names
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
+    // Explicitly include component libraries if used
+    "./node_modules/@radix-ui/**/*.{js,ts,jsx,tsx}",
   ],
+  
+  // Theme configuration
   theme: {
     colors: {
       white: '#ffffff',
@@ -69,6 +74,7 @@ export default {
         600: '#2563eb',
       },
     },
+    
     fontSize: {
       xs: ['12px', { lineHeight: '16px' }],
       sm: ['14px', { lineHeight: '20px' }],
@@ -80,16 +86,19 @@ export default {
       '4xl': ['36px', { lineHeight: '40px' }],
       '5xl': ['48px', { lineHeight: '56px' }],
     },
+    
     fontFamily: {
       sans: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'sans-serif'],
       mono: ['Fira Code', 'Monaco', 'monospace'],
     },
+    
     fontWeight: {
       normal: '400',
       medium: '500',
       semibold: '600',
       bold: '700',
     },
+    
     spacing: {
       0: '0',
       px: '1px',
@@ -104,6 +113,7 @@ export default {
       10: '80px',
       12: '96px',
     },
+    
     boxShadow: {
       none: 'none',
       sm: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
@@ -116,6 +126,7 @@ export default {
       'glow-lg': '0 0 40px rgba(79, 70, 229, 0.5)',
       'inner': 'inset 0 2px 4px 0 rgba(0, 0, 0, 0.05)',
     },
+    
     borderRadius: {
       none: '0',
       xs: '4px',
@@ -127,16 +138,19 @@ export default {
       '2xl': '24px',
       full: '9999px',
     },
+    
     backgroundColor: (theme) => ({
       ...theme('colors'),
       gradient: 'linear-gradient(135deg, #4f46e5 0%, #9333ea 100%)',
       'gradient-dark': 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
     }),
+    
     backgroundImage: {
       'gradient-to-br': 'linear-gradient(to bottom right, var(--tw-gradient-stops))',
       'gradient-indigo-purple': 'linear-gradient(135deg, #4f46e5 0%, #9333ea 100%)',
       'gradient-dark': 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
     },
+    
     animation: {
       'fade-in': 'fadeIn 0.3s ease-in-out',
       'fade-out': 'fadeOut 0.3s ease-in-out',
@@ -148,6 +162,7 @@ export default {
       'spin-slow': 'spin 3s linear infinite',
       'bounce-soft': 'bouncesoft 2s ease-in-out infinite',
     },
+    
     keyframes: {
       fadeIn: {
         '0%': { opacity: '0' },
@@ -182,6 +197,7 @@ export default {
         '50%': { transform: 'translateY(-4px)' },
       },
     },
+    
     transitionDuration: {
       0: '0ms',
       75: '75ms',
@@ -193,6 +209,7 @@ export default {
       700: '700ms',
       1000: '1000ms',
     },
+    
     transitionTimingFunction: {
       linear: 'linear',
       in: 'cubic-bezier(0.4, 0, 1, 1)',
@@ -201,6 +218,16 @@ export default {
       'ease-in-out': 'cubic-bezier(0.4, 0, 0.2, 1)',
     },
   },
+  
+  // Plugins
   plugins: [],
+  
+  // Important: Ensure proper CSS specificity for Tailwind utilities
+  important: false,
+  
+  // Respect prefers-reduced-motion
+  corePlugins: {
+    animation: true,
+    transition: true,
+  },
 }
-

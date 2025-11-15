@@ -22,6 +22,8 @@ interface CreateProjectInput {
   brand_name: string
   mood: string
   duration: number
+  primary_color?: string
+  secondary_color?: string
   product_image_url?: string
   brand_colors?: string[]
 }
