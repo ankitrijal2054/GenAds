@@ -34,7 +34,8 @@ class Settings(BaseSettings):
     
     # API Config
     api_host: str = "0.0.0.0"
-    api_port: int = 8000
+    # Railway may provide PORT, or we use API_PORT, or default to 8000
+    api_port: int = int(os.getenv("PORT") or os.getenv("API_PORT", "8000"))
     
     # Worker Config
     worker_processes: int = 1

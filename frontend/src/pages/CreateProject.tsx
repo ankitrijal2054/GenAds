@@ -164,7 +164,8 @@ export const CreateProject = () => {
       uploadFormData.append('file', file)
       uploadFormData.append('asset_type', assetType)
       
-      const uploadResponse = await fetch('http://localhost:8000/api/upload-asset', {
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+      const uploadResponse = await fetch(`${API_BASE_URL}/api/upload-asset`, {
         method: 'POST',
         body: uploadFormData,
       })
