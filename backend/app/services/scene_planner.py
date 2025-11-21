@@ -5,7 +5,7 @@ to generate a structured scene plan for LUXURY PERFUME videos with strict shot g
 
 Key Features:
 - CONSTRAINED scene generation (only allowed perfume shot types)
-- Scene count based on duration (3-5 scenes for 15-60s videos)
+- Scene count based on duration (3-9 scenes: 3 for 15-30s, 4-5 for 31-45s, 7-9 for 60s videos)
 - Perfume-specific visual language (macro bottles, luxury B-roll, atmospheric)
 - 3-retry system with fallback to predefined templates
 - TikTok vertical optimization (9:16 only)
@@ -361,8 +361,8 @@ If any style or tone is implied (e.g. cinematic, dark premium, minimal studio, l
 
 === PRODUCTION CONSTRAINTS ===
 Target Duration: {target_duration}s (flexible ±20%)
-Duration Range per Scene: 3-12 seconds
-Recommended Scene Count: 3-6 scenes
+Duration Range per Scene: 3-8 seconds
+Recommended Scene Count: 3-9 scenes
 Video Aspect Ratio: 9:16 (TikTok vertical - hardcoded)
 
 === AVAILABLE ASSETS ===
@@ -372,7 +372,7 @@ Video Aspect Ratio: 9:16 (TikTok vertical - hardcoded)
 Create a **modern, cinematic, product-centric** video that brings this creative vision to life.
 
 You decide:
-• Number of scenes (3-6 recommended, but use what the story needs)
+• Number of scenes (3-9 recommended, but use what the story needs)
 • Duration of each scene (vary for pacing - some short punchy scenes, some longer)
 • When to show product/logo (strategic placement, not every scene)
 • When to use text overlays (only when they add clarity or impact)
@@ -614,9 +614,9 @@ Plan the scene now!"""
 
             # Validate durations
             for scene in scenes:
-                if not 3 <= scene.get("duration", 5) <= 15:
-                    logger.warning(f"Scene {scene.get('scene_id')} duration out of range, clamping")
-                    scene["duration"] = max(3, min(15, scene.get("duration", 5)))
+                if not 3 <= scene.get("duration", 5) <= 8:
+                    logger.warning(f"Scene {scene.get('scene_id')} duration out of range, clamping to 3-8s")
+                    scene["duration"] = max(3, min(8, scene.get("duration", 5)))
 
             logger.info(f"Generated {len(scenes)} scenes via LLM")
             return scenes
@@ -808,6 +808,7 @@ Platform: TikTok Vertical (9:16, 1080×1920)
 Style: {chosen_style}
 Duration: ~{target_duration}s
 Scene Count: {scene_count} scenes
+Max Scene Duration: 8 seconds (CRITICAL - each scene MUST be ≤8s)
 {f"Gender: {perfume_gender.upper()}" if perfume_gender else ""}
 
 MANDATORY STRUCTURE:
@@ -815,7 +816,8 @@ MANDATORY STRUCTURE:
 2. LAST scene: {flow_rules.get('last_scene_must_be', ['brand_moment'])} shot type
 3. Product appears in {flow_rules['product_visibility_rules']['minimum_product_scenes']}-{flow_rules['product_visibility_rules']['maximum_product_scenes']} scenes
 4. Final scene includes perfume name "{perfume_name}" + brand "{brand_name}"
-5. Total duration: ±{int(target_duration * 0.15)}s from {target_duration}s
+5. Each scene duration: 3-8 seconds (NEVER exceed 8 seconds per scene)
+6. Total duration: ±{int(target_duration * 0.15)}s from {target_duration}s
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🎯 YOUR WORKFLOW
@@ -846,7 +848,7 @@ Return ONLY valid JSON array with {scene_count} scene objects:
     "shot_type": "{allowed_ids[0]}",
     "shot_variation": "extreme_closeup_cap",
     "role": "hook",
-    "duration": 6,
+    "duration": 5,  # MUST be 3-8 seconds (max 8s)
     "background_prompt": "Cinematic opening that brings USER'S CONCEPT to life with dolly-in camera, volumetric fog, rim lighting, bokeh, and {chosen_style} aesthetic. Describe USER'S vision enhanced with perfume commercial techniques.",
     "use_product": true,
     "product_position": "center",
@@ -893,7 +895,8 @@ CRITICAL TECHNICAL RULES:
 2. DO NOT use dictionary keys like 'macro_bottle_shots' - use 'macro_bottle' instead
 3. DO NOT invent new shot types
 4. Every scene MUST have a shot_type field with one of the exact IDs above
-5. Output only valid JSON arrays
+5. Each scene duration MUST be 3-8 seconds (NEVER exceed 8 seconds per scene)
+6. Output only valid JSON arrays
 
 BALANCE: Realize user's creative concept + Apply perfume cinematography = Perfect execution
 
@@ -1086,15 +1089,15 @@ Follow user's vision FIRST, grammar rules SECOND."""
                 }
             ]
         
-        # Template for 4-5 scenes (30-60s)
-        else:
+        # Template for 4-5 scenes (31-45s)
+        elif scene_count <= 5:
             return [
                 {
                     "scene_id": 0,
                     "shot_type": "macro_bottle",
                     "shot_variation": "spray_mist_macro",
                     "role": "hook",
-                    "duration": 5,
+                    "duration": 6,
                     "background_prompt": f"Perfume spray mist in macro, golden particles, {style} lighting, cinematic premium",
                     "use_product": True,
                     "product_position": "center",
@@ -1115,7 +1118,7 @@ Follow user's vision FIRST, grammar rules SECOND."""
                     "shot_type": "aesthetic_broll",
                     "shot_variation": "rose_petals_falling",
                     "role": "build",
-                    "duration": 6,
+                    "duration": 7,
                     "background_prompt": f"Rose petals in luxury motion, soft lighting, {style} mood",
                     "use_product": False,
                     "camera_movement": "slow_pan_right",
@@ -1124,10 +1127,10 @@ Follow user's vision FIRST, grammar rules SECOND."""
                 },
                 {
                     "scene_id": 2,
-                    "shot_type": "atmospheric",  # Use ID, not dictionary key
+                    "shot_type": "atmospheric",
                     "shot_variation": "light_rays_through_window",
                     "role": "showcase",
-                    "duration": 6,
+                    "duration": 7,
                     "background_prompt": f"Light rays through premium materials, {style} aesthetic",
                     "use_product": False,
                     "camera_movement": "slow_zoom_in",
@@ -1136,6 +1139,20 @@ Follow user's vision FIRST, grammar rules SECOND."""
                 },
                 {
                     "scene_id": 3,
+                    "shot_type": "macro_bottle",
+                    "shot_variation": "bottle_reflection",
+                    "role": "proof",
+                    "duration": 7,
+                    "background_prompt": f"Perfume bottle reflected in elegant surface, {style} premium aesthetic",
+                    "use_product": True,
+                    "product_position": "center",
+                    "product_scale": 0.5,
+                    "camera_movement": "slow_zoom_out",
+                    "transition_to_next": "fade",
+                    "overlay": {"text": "", "position": "bottom", "duration": 0, "font_size": 48, "color": color, "animation": "fade_in"}
+                },
+                {
+                    "scene_id": 4,
                     "shot_type": "brand_moment",
                     "shot_variation": "bottle_with_tagline",
                     "role": "cta",
@@ -1156,6 +1173,152 @@ Follow user's vision FIRST, grammar rules SECOND."""
                     }
                 }
             ]
+        # Template for 7-9 scenes (60s videos)
+        else:
+            # Base template for 7 scenes (can be extended to 9)
+            scenes = [
+                {
+                    "scene_id": 0,
+                    "shot_type": "macro_bottle",
+                    "shot_variation": "spray_mist_macro",
+                    "role": "hook",
+                    "duration": 7,
+                    "background_prompt": f"Perfume spray mist in macro, golden particles, {style} lighting, cinematic premium",
+                    "use_product": True,
+                    "product_position": "center",
+                    "product_scale": 0.5,
+                    "camera_movement": "static",
+                    "transition_to_next": "fade",
+                    "overlay": {
+                        "text": perfume_name,
+                        "position": "bottom",
+                        "duration": 2.0,
+                        "font_size": 48,
+                        "color": color,
+                        "animation": "fade_in"
+                    }
+                },
+                {
+                    "scene_id": 1,
+                    "shot_type": "aesthetic_broll",
+                    "shot_variation": "silk_fabric_flowing",
+                    "role": "build",
+                    "duration": 8,
+                    "background_prompt": f"Luxurious silk fabric flowing elegantly, {style} lighting and mood",
+                    "use_product": False,
+                    "camera_movement": "slow_pan_right",
+                    "transition_to_next": "fade",
+                    "overlay": {"text": "", "position": "bottom", "duration": 0, "font_size": 48, "color": color, "animation": "fade_in"}
+                },
+                {
+                    "scene_id": 2,
+                    "shot_type": "macro_bottle",
+                    "shot_variation": "extreme_closeup_cap",
+                    "role": "showcase",
+                    "duration": 7,
+                    "background_prompt": f"Extreme close-up of perfume bottle cap, elegant lighting, {style} aesthetic",
+                    "use_product": True,
+                    "product_position": "center",
+                    "product_scale": 0.6,
+                    "camera_movement": "slow_zoom_in",
+                    "transition_to_next": "fade",
+                    "overlay": {"text": "", "position": "bottom", "duration": 0, "font_size": 48, "color": color, "animation": "fade_in"}
+                },
+                {
+                    "scene_id": 3,
+                    "shot_type": "atmospheric",
+                    "shot_variation": "light_rays_through_window",
+                    "role": "build",
+                    "duration": 8,
+                    "background_prompt": f"Light rays through premium materials creating elegant atmosphere, {style} aesthetic",
+                    "use_product": False,
+                    "camera_movement": "slow_zoom_in",
+                    "transition_to_next": "fade",
+                    "overlay": {"text": "", "position": "bottom", "duration": 0, "font_size": 48, "color": color, "animation": "fade_in"}
+                },
+                {
+                    "scene_id": 4,
+                    "shot_type": "aesthetic_broll",
+                    "shot_variation": "rose_petals_falling",
+                    "role": "build",
+                    "duration": 7,
+                    "background_prompt": f"Rose petals falling in slow motion, soft lighting, {style} mood",
+                    "use_product": False,
+                    "camera_movement": "slow_pan_right",
+                    "transition_to_next": "fade",
+                    "overlay": {"text": "", "position": "bottom", "duration": 0, "font_size": 48, "color": color, "animation": "fade_in"}
+                },
+                {
+                    "scene_id": 5,
+                    "shot_type": "atmospheric",
+                    "shot_variation": "dust_motes_floating",
+                    "role": "showcase",
+                    "duration": 8,
+                    "background_prompt": f"Dust motes floating in golden light, elegant atmosphere, {style} aesthetic",
+                    "use_product": False,
+                    "camera_movement": "slow_zoom_in",
+                    "transition_to_next": "fade",
+                    "overlay": {"text": "", "position": "bottom", "duration": 0, "font_size": 48, "color": color, "animation": "fade_in"}
+                },
+                {
+                    "scene_id": 6,
+                    "shot_type": "brand_moment",
+                    "shot_variation": "product_centered_minimal",
+                    "role": "cta",
+                    "duration": 7,
+                    "background_prompt": f"Clean minimalist studio, perfume bottle centered, {style} aesthetic, premium final moment",
+                    "use_product": True,
+                    "product_position": "center",
+                    "product_scale": 0.5,
+                    "camera_movement": "slow_zoom_out",
+                    "transition_to_next": "fade",
+                    "overlay": {
+                        "text": f"{perfume_name}\n{brand_name}",
+                        "position": "bottom",
+                        "duration": 3.0,
+                        "font_size": 48,
+                        "color": color,
+                        "animation": "fade_in"
+                    }
+                }
+            ]
+            
+            # Add extra scenes for 8-9 scene counts
+            if scene_count >= 8:
+                scenes.insert(6, {
+                    "scene_id": 6,
+                    "shot_type": "macro_bottle",
+                    "shot_variation": "bottle_reflection",
+                    "role": "proof",
+                    "duration": 7,
+                    "background_prompt": f"Perfume bottle reflected in elegant surface, {style} premium aesthetic",
+                    "use_product": True,
+                    "product_position": "center",
+                    "product_scale": 0.5,
+                    "camera_movement": "slow_zoom_out",
+                    "transition_to_next": "fade",
+                    "overlay": {"text": "", "position": "bottom", "duration": 0, "font_size": 48, "color": color, "animation": "fade_in"}
+                })
+                # Update scene IDs for last scene
+                scenes[-1]["scene_id"] = scene_count - 1
+            
+            if scene_count == 9:
+                scenes.insert(7, {
+                    "scene_id": 7,
+                    "shot_type": "aesthetic_broll",
+                    "shot_variation": "gold_leaf_texture",
+                    "role": "build",
+                    "duration": 7,
+                    "background_prompt": f"Gold leaf texture floating in light, luxury aesthetic, {style} mood",
+                    "use_product": False,
+                    "camera_movement": "slow_pan_right",
+                    "transition_to_next": "fade",
+                    "overlay": {"text": "", "position": "bottom", "duration": 0, "font_size": 48, "color": color, "animation": "fade_in"}
+                })
+                # Update scene IDs for last scene
+                scenes[-1]["scene_id"] = 8
+            
+            return scenes
 
     async def _llm_choose_style(
         self,

@@ -87,7 +87,8 @@ class PerfumeGrammarLoader:
             duration: Video duration in seconds (15-60)
             
         Returns:
-            Recommended number of scenes (3-5)
+            Recommended number of scenes (3-9)
+            For 60s videos: 7-9 scenes (with 8s max per scene)
         """
         pacing = self.grammar.get("pacing_guidelines", {})
 
@@ -95,8 +96,15 @@ class PerfumeGrammarLoader:
             return pacing.get("15_30_seconds", {}).get("scene_count", 3)
         elif duration <= 45:
             return pacing.get("31_45_seconds", {}).get("scene_count", 4)
+        elif duration == 60:
+            # For 60s videos, create 7-9 scenes (8s max per scene = 56-72s total, target ~60s)
+            # Average ~7-8 seconds per scene for smooth pacing
+            import random
+            return random.randint(7, 9)  # Random between 7-9 for variety
         else:
-            return pacing.get("46_60_seconds", {}).get("scene_count", 5)
+            # For durations 46-59, use proportional calculation
+            # Target: ~7-8s per scene average
+            return max(6, min(9, int(duration / 7.5)))  # 6-9 scenes depending on duration
 
     def get_avg_scene_duration_for_count(self, scene_count: int) -> Tuple[float, float]:
         """Get recommended average scene duration based on scene count.

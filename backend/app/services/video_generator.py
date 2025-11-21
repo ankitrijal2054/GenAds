@@ -217,7 +217,7 @@ class VideoGenerator:
             "input": {
                 "fps": 24,
                 "prompt": prompt,
-                "duration": min(duration, 10),  # Cap at 10s
+                "duration": min(duration, 8),  # Cap at 8s (max scene duration for optimal quality)
                 "resolution": "480p",  # 480p for faster generation, good quality
                 "aspect_ratio": "9:16",  # Hardcoded TikTok vertical
                 "camera_fixed": False

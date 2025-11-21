@@ -815,7 +815,7 @@ BRAND GUIDELINES (extracted from guidelines document):
         
         normalized_scenes = []
         for scene in scenes:
-            new_duration = max(3, min(15, int(scene.duration * scale_factor)))
+            new_duration = max(3, min(8, int(scene.duration * scale_factor)))  # Cap at 8s (max scene duration)
             
             scene_dict = scene.model_dump() if hasattr(scene, 'model_dump') else scene.dict()
             scene_dict['duration'] = new_duration

@@ -211,7 +211,7 @@ class AudioEngine:
         logger.info("Calling MusicGen model...")
 
         # MusicGen model parameters
-        duration_sec = int(min(duration, 30))  # Cap at 30 seconds
+        duration_sec = int(min(duration, 60))  # Cap at 60 seconds (matches max video duration)
 
         # Run synchronous replicate.run() in thread pool to avoid blocking event loop
         loop = asyncio.get_event_loop()

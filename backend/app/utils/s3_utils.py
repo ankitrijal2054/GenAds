@@ -620,7 +620,7 @@ async def upload_draft_video(
     - perfume_id: Perfume UUID (as string)
     - campaign_id: Campaign UUID (as string)
     - variation_index: Variation index (0, 1, or 2)
-    - scene_index: Scene index (1-4)
+    - scene_index: Scene index (1-9, supports 7-9 scenes for 60s videos)
     - file_path: Local file path to upload
     
     **Returns:**
@@ -642,9 +642,9 @@ async def upload_draft_video(
         if variation_index not in [0, 1, 2]:
             raise ValueError("variation_index must be 0, 1, or 2")
         
-        # Validate scene_index
-        if scene_index < 1 or scene_index > 4:
-            raise ValueError("scene_index must be between 1 and 4")
+        # Validate scene_index (supports up to 9 scenes for 60s videos)
+        if scene_index < 1 or scene_index > 9:
+            raise ValueError("scene_index must be between 1 and 9")
         
         s3_key = f"brands/{brand_id}/perfumes/{perfume_id}/campaigns/{campaign_id}/variation_{variation_index}/draft/scene_{scene_index}_bg.mp4"
         

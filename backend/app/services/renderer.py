@@ -195,24 +195,32 @@ class Renderer:
             raise
 
     async def _mix_audio(self, video_path: Path, audio_path: Path, output_path: Path):
-        """Mix video with audio using FFmpeg."""
+        """Mix video with audio using FFmpeg.
+        
+        Audio will be looped if shorter than video to ensure full video length.
+        Video duration determines final output length.
+        """
         try:
+            # Loop audio if it's shorter than video (for background music)
+            # Using -stream_loop -1 loops audio infinitely, then -shortest ensures
+            # output length matches video length (audio stops when video ends)
             cmd = [
                 "ffmpeg",
                 "-i",
                 str(video_path),
+                "-stream_loop", "-1",  # Loop audio infinitely
                 "-i",
                 str(audio_path),
                 "-c:v",
                 "copy",
                 "-c:a",
                 "aac",
-                "-shortest",  # End at shortest input
+                "-shortest",  # End when video ends (audio loops until then)
                 "-y",
                 str(output_path),
             ]
 
-            logger.debug("Mixing audio with video...")
+            logger.debug("Mixing audio with video (audio will loop if shorter)...")
             result = subprocess.run(cmd, capture_output=True, text=True)
 
             if result.returncode != 0:

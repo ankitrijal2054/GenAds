@@ -2,7 +2,7 @@
   "grammar_version": "1.0",
   "target_platform": "tiktok_vertical",
   "duration_range": [15, 60],
-  "scene_count_range": [3, 5],
+  "scene_count_range": [3, 9],
   "target_aspect_ratio": "9:16",
   "target_resolution": "1080x1920",
   "description": "Luxury perfume TikTok vertical video shot grammar. Constrains LLM to only generate perfume-specific scenes with consistent luxury aesthetic.",
@@ -274,15 +274,20 @@
       ]
     },
     "46_60_seconds": {
-      "scene_count": 5,
-      "avg_scene_duration": [9, 12],
+      "scene_count": 8,
+      "scene_count_range": [7, 9],
+      "avg_scene_duration": [6, 8],
       "breakdown": [
         "Hook atmosphere (3-5s)",
         "Product macro shot (5-8s)",
-        "Luxury B-roll (5-7s)",
-        "Atmosphere or human (5-7s)",
-        "Final brand moment (5-7s)"
-      ]
+        "Luxury B-roll (5-8s)",
+        "Atmosphere scene (5-8s)",
+        "Product detail (5-8s)",
+        "Luxury texture (5-8s)",
+        "Atmosphere or human (5-8s)",
+        "Final brand moment (5-8s)"
+      ],
+      "note": "For 60s videos, create 7-9 scenes with 8 seconds max per scene for optimal pacing and quality"
     }
   },
 
