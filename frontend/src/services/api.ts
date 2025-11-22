@@ -88,6 +88,16 @@ export const manualEditing = {
   exportEdit: (campaignId: string, timelineState: any) =>
     api.post(`/api/campaigns/${campaignId}/editing/export`, {
       timeline_state: timelineState
+    }),
+  
+  exportEditUpload: (campaignId: string, videoFile: Blob) => {
+    const formData = new FormData()
+    formData.append('file', videoFile, 'edited-video.mp4')
+    return api.post(`/api/campaigns/${campaignId}/editing/export-upload`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
     })
+  }
 }
 

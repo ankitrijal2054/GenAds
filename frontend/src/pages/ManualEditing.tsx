@@ -179,128 +179,151 @@ export const ManualEditing = () => {
     setError(null)
     
     try {
-      const store = useEditorStore.getState()
-      const { timelineVideoClips, timelineAudioClips } = store
+      // Record video using shared function
+      const videoBlob = await recordTimelineVideo()
       
-      if (timelineVideoClips.length === 0 && timelineAudioClips.length === 0) {
-        setError('No clips to download')
-        setIsDownloading(false)
-        return
-      }
+      // Download the blob
+      const url = URL.createObjectURL(videoBlob)
+      const a = document.createElement('a')
+      a.href = url
+      const extension = videoBlob.type.includes('webm') ? 'webm' : 'mp4'
+      a.download = `edited-video-${campaignId}-${Date.now()}.${extension}`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
       
-      // Create canvas for rendering
-      const canvas = document.createElement('canvas')
-      canvas.width = 1080
-      canvas.height = 1920
-      const ctx = canvas.getContext('2d')
-      if (!ctx) {
-        throw new Error('Could not get canvas context')
-      }
+      setIsDownloading(false)
+    } catch (err: any) {
+      console.error('Download error:', err)
+      setError(err?.message || 'Failed to download video')
+      setIsDownloading(false)
+    }
+  }
+  
+  // Record video from timeline (shared between download and export)
+  const recordTimelineVideo = async (onProgress?: (progress: number) => void): Promise<Blob> => {
+    const store = useEditorStore.getState()
+    const { timelineVideoClips, timelineAudioClips } = store
+    
+    if (timelineVideoClips.length === 0 && timelineAudioClips.length === 0) {
+      throw new Error('No clips to record')
+    }
+    
+    // Create canvas for rendering
+    const canvas = document.createElement('canvas')
+    canvas.width = 1080
+    canvas.height = 1920
+    const ctx = canvas.getContext('2d')
+    if (!ctx) {
+      throw new Error('Could not get canvas context')
+    }
+    
+    // Fill with black background initially
+    ctx.fillStyle = '#000000'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    
+    // Create MediaRecorder from canvas stream
+    const canvasStream = canvas.captureStream(30) // 30 fps
+    
+    // Create audio context for mixing audio
+    const audioContext = new AudioContext({ sampleRate: 44100 })
+    const audioDestination = audioContext.createMediaStreamDestination()
+    const audioGainNode = audioContext.createGain()
+    audioGainNode.gain.value = 1.0
+    audioGainNode.connect(audioDestination)
+    
+    // Load and connect audio clips
+    const audioElements: Map<string, HTMLAudioElement> = new Map()
+    const audioSourceNodes: Map<string, MediaElementAudioSourceNode> = new Map()
+    
+    for (const audioClip of timelineAudioClips) {
+      const audioSource = store.getClipSource(audioClip.id) || audioClip.audioUrl
+      if (!audioSource) continue
       
-      // Fill with black background initially
-      ctx.fillStyle = '#000000'
-      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      const audio = document.createElement('audio')
+      audio.crossOrigin = 'anonymous'
+      audio.preload = 'auto'
+      audio.loop = false
       
-      // Create MediaRecorder from canvas stream
-      const canvasStream = canvas.captureStream(30) // 30 fps
-      
-      // Create audio context for mixing audio
-      const audioContext = new AudioContext({ sampleRate: 44100 })
-      const audioDestination = audioContext.createMediaStreamDestination()
-      const audioGainNode = audioContext.createGain()
-      audioGainNode.gain.value = 1.0
-      audioGainNode.connect(audioDestination)
-      
-      // Load and connect audio clips
-      const audioElements: Map<string, HTMLAudioElement> = new Map()
-      const audioSourceNodes: Map<string, MediaElementAudioSourceNode> = new Map()
-      
-      for (const audioClip of timelineAudioClips) {
-        const audioSource = store.getClipSource(audioClip.id) || audioClip.audioUrl
-        if (!audioSource) continue
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error(`Timeout loading audio: ${audioClip.name}`))
+        }, 10000)
         
-        const audio = document.createElement('audio')
-        audio.crossOrigin = 'anonymous'
-        audio.preload = 'auto'
-        audio.loop = false
-        
-        await new Promise<void>((resolve, reject) => {
-          const timeout = setTimeout(() => {
-            reject(new Error(`Timeout loading audio: ${audioClip.name}`))
-          }, 10000)
-          
-          const cleanup = () => {
-            clearTimeout(timeout)
-            audio.removeEventListener('loadeddata', onLoadedData)
-            audio.removeEventListener('error', onError)
-            audio.removeEventListener('canplay', onCanPlay)
-          }
-          
-          const onLoadedData = () => {
-            cleanup()
-            resolve()
-          }
-          
-          const onCanPlay = () => {
-            cleanup()
-            resolve()
-          }
-          
-          const onError = (e: Event) => {
-            cleanup()
-            console.error('Audio load error:', e)
-            reject(new Error(`Failed to load audio: ${audioClip.name}`))
-          }
-          
-          audio.addEventListener('loadeddata', onLoadedData)
-          audio.addEventListener('canplay', onCanPlay)
-          audio.addEventListener('error', onError)
-          
-          audio.src = audioSource
-          audio.load()
-        })
-        
-        // Create audio source node and connect to gain node
-        try {
-          const sourceNode = audioContext.createMediaElementSource(audio)
-          const clipGainNode = audioContext.createGain()
-          clipGainNode.gain.value = 1.0
-          sourceNode.connect(clipGainNode)
-          clipGainNode.connect(audioGainNode)
-          
-          audioSourceNodes.set(audioClip.id, sourceNode)
-          audioElements.set(audioClip.id, audio)
-        } catch (e) {
-          console.warn('Could not create audio source node:', e)
-          // Continue without audio for this clip
+        const cleanup = () => {
+          clearTimeout(timeout)
+          audio.removeEventListener('loadeddata', onLoadedData)
+          audio.removeEventListener('error', onError)
+          audio.removeEventListener('canplay', onCanPlay)
         }
-      }
-      
-      // Add audio tracks to canvas stream
-      const audioTracks = audioDestination.stream.getAudioTracks()
-      audioTracks.forEach(track => canvasStream.addTrack(track))
-      
-      // Check for supported MIME types
-      let mimeType = 'video/webm'
-      if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')) {
-        mimeType = 'video/webm;codecs=vp9,opus'
-      } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
-        mimeType = 'video/webm;codecs=vp8,opus'
-      } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) {
-        mimeType = 'video/webm;codecs=vp9'
-      } else if (MediaRecorder.isTypeSupported('video/webm')) {
-        mimeType = 'video/webm'
-      }
-      
-      const mediaRecorder = new MediaRecorder(canvasStream, {
-        mimeType,
-        videoBitsPerSecond: 5000000,
-        audioBitsPerSecond: 128000
+        
+        const onLoadedData = () => {
+          cleanup()
+          resolve()
+        }
+        
+        const onCanPlay = () => {
+          cleanup()
+          resolve()
+        }
+        
+        const onError = (e: Event) => {
+          cleanup()
+          console.error('Audio load error:', e)
+          reject(new Error(`Failed to load audio: ${audioClip.name}`))
+        }
+        
+        audio.addEventListener('loadeddata', onLoadedData)
+        audio.addEventListener('canplay', onCanPlay)
+        audio.addEventListener('error', onError)
+        
+        audio.src = audioSource
+        audio.load()
       })
       
-      const chunks: Blob[] = []
-      let recordingStarted = false
-      
+      // Create audio source node and connect to gain node
+      try {
+        const sourceNode = audioContext.createMediaElementSource(audio)
+        const clipGainNode = audioContext.createGain()
+        clipGainNode.gain.value = 1.0
+        sourceNode.connect(clipGainNode)
+        clipGainNode.connect(audioGainNode)
+        
+        audioSourceNodes.set(audioClip.id, sourceNode)
+        audioElements.set(audioClip.id, audio)
+      } catch (e) {
+        console.warn('Could not create audio source node:', e)
+        // Continue without audio for this clip
+      }
+    }
+    
+    // Add audio tracks to canvas stream
+    const audioTracks = audioDestination.stream.getAudioTracks()
+    audioTracks.forEach(track => canvasStream.addTrack(track))
+    
+    // Check for supported MIME types
+    let mimeType = 'video/webm'
+    if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')) {
+      mimeType = 'video/webm;codecs=vp9,opus'
+    } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
+      mimeType = 'video/webm;codecs=vp8,opus'
+    } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) {
+      mimeType = 'video/webm;codecs=vp9'
+    } else if (MediaRecorder.isTypeSupported('video/webm')) {
+      mimeType = 'video/webm'
+    }
+    
+    const mediaRecorder = new MediaRecorder(canvasStream, {
+      mimeType,
+      videoBitsPerSecond: 5000000,
+      audioBitsPerSecond: 128000
+    })
+    
+    const chunks: Blob[] = []
+    let recordingStarted = false
+    
+    return new Promise<Blob>((resolve, reject) => {
       mediaRecorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) {
           chunks.push(e.data)
@@ -309,30 +332,20 @@ export const ManualEditing = () => {
       
       mediaRecorder.onstop = () => {
         if (chunks.length === 0) {
-          setError('No video data recorded. Please try again.')
-          setIsDownloading(false)
+          audioContext.close()
+          reject(new Error('No video data recorded. Please try again.'))
           return
         }
         
         const blob = new Blob(chunks, { type: mimeType })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        const extension = mimeType.includes('webm') ? 'webm' : 'mp4'
-        a.download = `edited-video-${campaignId}-${Date.now()}.${extension}`
-        document.body.appendChild(a)
-        a.click()
-        document.body.removeChild(a)
-        URL.revokeObjectURL(url)
         audioContext.close()
-        setIsDownloading(false)
+        resolve(blob)
       }
       
       mediaRecorder.onerror = (e) => {
         console.error('MediaRecorder error:', e)
-        setError('Recording error occurred')
         audioContext.close()
-        setIsDownloading(false)
+        reject(new Error('Recording error occurred'))
       }
       
       // Start recording
@@ -350,226 +363,223 @@ export const ManualEditing = () => {
       // Pre-load all video clips
       const videoElements: Map<string, HTMLVideoElement> = new Map()
       
-      for (const clip of sortedClips) {
-        const clipSource = store.getClipSource(clip.id) || clip.videoUrl
-        if (!clipSource) continue
-        
-        const video = document.createElement('video')
-        video.crossOrigin = 'anonymous'
-        video.muted = false
-        video.playsInline = true
-        video.preload = 'auto'
-        
-        await new Promise<void>((resolve, reject) => {
-          const timeout = setTimeout(() => {
-            reject(new Error(`Timeout loading video: ${clip.name}`))
-          }, 15000)
+      // Load all videos first
+      Promise.all(
+        sortedClips.map(async (clip) => {
+          const clipSource = store.getClipSource(clip.id) || clip.videoUrl
+          if (!clipSource) return null
           
-          const cleanup = () => {
-            clearTimeout(timeout)
-            video.removeEventListener('loadeddata', onLoadedData)
-            video.removeEventListener('error', onError)
-            video.removeEventListener('canplay', onCanPlay)
-          }
+          const video = document.createElement('video')
+          video.crossOrigin = 'anonymous'
+          video.muted = false
+          video.playsInline = true
+          video.preload = 'auto'
           
-          const onLoadedData = () => {
-            cleanup()
-            resolve()
-          }
-          
-          const onCanPlay = () => {
-            if (video.readyState >= 2) {
+          await new Promise<void>((resolve, reject) => {
+            const timeout = setTimeout(() => {
+              reject(new Error(`Timeout loading video: ${clip.name}`))
+            }, 15000)
+            
+            const cleanup = () => {
+              clearTimeout(timeout)
+              video.removeEventListener('loadeddata', onLoadedData)
+              video.removeEventListener('error', onError)
+              video.removeEventListener('canplay', onCanPlay)
+            }
+            
+            const onLoadedData = () => {
               cleanup()
               resolve()
             }
-          }
+            
+            const onCanPlay = () => {
+              if (video.readyState >= 2) {
+                cleanup()
+                resolve()
+              }
+            }
+            
+            const onError = (e: Event) => {
+              cleanup()
+              console.error('Video load error:', e, clipSource)
+              reject(new Error(`Failed to load video: ${clip.name}`))
+            }
+            
+            video.addEventListener('loadeddata', onLoadedData)
+            video.addEventListener('canplay', onCanPlay)
+            video.addEventListener('error', onError)
+            
+            video.src = clipSource
+            video.load()
+          })
           
-          const onError = (e: Event) => {
-            cleanup()
-            console.error('Video load error:', e, clipSource)
-            reject(new Error(`Failed to load video: ${clip.name}`))
-          }
-          
-          video.addEventListener('loadeddata', onLoadedData)
-          video.addEventListener('canplay', onCanPlay)
-          video.addEventListener('error', onError)
-          
-          video.src = clipSource
-          video.load()
+          videoElements.set(clip.id, video)
+          return video
         })
+      ).then(() => {
+        // Render frame by frame through entire timeline
+        const totalFrames = Math.ceil(totalDuration * frameRate)
+        let lastActiveClipId: string | null = null
         
-        videoElements.set(clip.id, video)
-      }
-      
-      // Render frame by frame through entire timeline
-      const totalFrames = Math.ceil(totalDuration * frameRate)
-      let lastActiveClipId: string | null = null
-      
-      for (let frame = 0; frame < totalFrames; frame++) {
-        const currentTime = frame / frameRate
-        
-        // Find active clip at this time
-        const activeClip = sortedClips.find(
-          clip => currentTime >= clip.position && 
-                  currentTime < clip.position + clip.effectiveDuration
-        )
-        
-        if (activeClip) {
-          const video = videoElements.get(activeClip.id)
-          if (video) {
-            // Calculate time within clip
-            const timeInClip = currentTime - activeClip.position
-            const targetVideoTime = activeClip.trimStart + timeInClip
+        const renderFrame = async (frame: number) => {
+          if (frame >= totalFrames) {
+            // Stop all audio
+            audioElements.forEach(audio => {
+              audio.pause()
+              audio.currentTime = 0
+            })
             
-            // Only seek when clip changes or when significantly off (reduces flickering)
-            const clipChanged = lastActiveClipId !== activeClip.id
-            if (clipChanged) {
-              // New clip - seek to start and wait for ready
-              video.currentTime = targetVideoTime
-              // Wait for video to be ready
-              while (video.readyState < 2) {
-                await new Promise(r => setTimeout(r, 50))
-              }
-              await new Promise(r => setTimeout(r, 50)) // Extra wait for frame to be ready
-              lastActiveClipId = activeClip.id
-            } else if (Math.abs(video.currentTime - targetVideoTime) > 0.3) {
-              // Only seek if significantly off (reduces flickering)
-              video.currentTime = targetVideoTime
-              await new Promise(r => setTimeout(r, 50))
+            // Wait a bit to ensure all frames are captured
+            await new Promise(r => setTimeout(r, 500))
+            
+            // Stop recording
+            if (recordingStarted && mediaRecorder.state !== 'inactive') {
+              mediaRecorder.stop()
             } else {
-              // Small incremental update without seek
-              video.currentTime = targetVideoTime
+              reject(new Error('Recording was not started properly'))
             }
-            
-            // Ensure video is ready before drawing
-            if (video.readyState < 2) {
-              await new Promise(r => setTimeout(r, 30))
-            }
-            
-            // Draw current frame
-            try {
-              if (video.videoWidth > 0 && video.videoHeight > 0) {
-                // Calculate aspect ratio and center the video
-                const videoAspect = video.videoWidth / video.videoHeight
-                const canvasAspect = canvas.width / canvas.height
-                
-                let drawWidth = canvas.width
-                let drawHeight = canvas.height
-                let drawX = 0
-                let drawY = 0
-                
-                if (videoAspect > canvasAspect) {
-                  // Video is wider - fit to width
-                  drawHeight = canvas.width / videoAspect
-                  drawY = (canvas.height - drawHeight) / 2
-                } else {
-                  // Video is taller - fit to height
-                  drawWidth = canvas.height * videoAspect
-                  drawX = (canvas.width - drawWidth) / 2
+            return
+          }
+          
+          const currentTime = frame / frameRate
+          
+          // Find active clip at this time
+          const activeClip = sortedClips.find(
+            clip => currentTime >= clip.position && 
+                    currentTime < clip.position + clip.effectiveDuration
+          )
+          
+          if (activeClip) {
+            const video = videoElements.get(activeClip.id)
+            if (video) {
+              // Calculate time within clip
+              const timeInClip = currentTime - activeClip.position
+              const targetVideoTime = activeClip.trimStart + timeInClip
+              
+              // Only seek when clip changes or when significantly off
+              const clipChanged = lastActiveClipId !== activeClip.id
+              if (clipChanged) {
+                video.currentTime = targetVideoTime
+                while (video.readyState < 2) {
+                  await new Promise(r => setTimeout(r, 50))
                 }
-                
-                // Fill black background
-                ctx.fillStyle = '#000000'
-                ctx.fillRect(0, 0, canvas.width, canvas.height)
-                
-                // Draw video frame
-                ctx.drawImage(video, drawX, drawY, drawWidth, drawHeight)
+                await new Promise(r => setTimeout(r, 50))
+                lastActiveClipId = activeClip.id
+              } else if (Math.abs(video.currentTime - targetVideoTime) > 0.3) {
+                video.currentTime = targetVideoTime
+                await new Promise(r => setTimeout(r, 50))
               } else {
-                // Video not ready, draw black
+                video.currentTime = targetVideoTime
+              }
+              
+              // Ensure video is ready before drawing
+              if (video.readyState < 2) {
+                await new Promise(r => setTimeout(r, 30))
+              }
+              
+              // Draw current frame
+              try {
+                if (video.videoWidth > 0 && video.videoHeight > 0) {
+                  const videoAspect = video.videoWidth / video.videoHeight
+                  const canvasAspect = canvas.width / canvas.height
+                  
+                  let drawWidth = canvas.width
+                  let drawHeight = canvas.height
+                  let drawX = 0
+                  let drawY = 0
+                  
+                  if (videoAspect > canvasAspect) {
+                    drawHeight = canvas.width / videoAspect
+                    drawY = (canvas.height - drawHeight) / 2
+                  } else {
+                    drawWidth = canvas.height * videoAspect
+                    drawX = (canvas.width - drawWidth) / 2
+                  }
+                  
+                  ctx.fillStyle = '#000000'
+                  ctx.fillRect(0, 0, canvas.width, canvas.height)
+                  ctx.drawImage(video, drawX, drawY, drawWidth, drawHeight)
+                } else {
+                  ctx.fillStyle = '#000000'
+                  ctx.fillRect(0, 0, canvas.width, canvas.height)
+                }
+              } catch (e) {
+                console.error('Error drawing frame:', e)
                 ctx.fillStyle = '#000000'
                 ctx.fillRect(0, 0, canvas.width, canvas.height)
               }
-            } catch (e) {
-              console.error('Error drawing frame:', e)
-              // Fill with black if draw fails
+            } else {
               ctx.fillStyle = '#000000'
               ctx.fillRect(0, 0, canvas.width, canvas.height)
             }
           } else {
-            // No video element, draw black
             ctx.fillStyle = '#000000'
             ctx.fillRect(0, 0, canvas.width, canvas.height)
+            lastActiveClipId = null
           }
-        } else {
-          // No active clip at this time, draw black
-          ctx.fillStyle = '#000000'
-          ctx.fillRect(0, 0, canvas.width, canvas.height)
-          lastActiveClipId = null
-        }
-        
-        // Update audio playback synchronized with video
-        for (const audioClip of timelineAudioClips) {
-          const audio = audioElements.get(audioClip.id)
-          if (!audio) continue
           
-          if (currentTime >= audioClip.position && currentTime < audioClip.position + audioClip.effectiveDuration) {
-            const timeInAudio = currentTime - audioClip.position
-            const targetAudioTime = audioClip.trimStart + timeInAudio
+          // Update audio playback synchronized with video
+          for (const audioClip of timelineAudioClips) {
+            const audio = audioElements.get(audioClip.id)
+            if (!audio) continue
             
-            // Seek audio if needed
-            if (Math.abs(audio.currentTime - targetAudioTime) > 0.2) {
-              audio.currentTime = targetAudioTime
+            if (currentTime >= audioClip.position && currentTime < audioClip.position + audioClip.effectiveDuration) {
+              const timeInAudio = currentTime - audioClip.position
+              const targetAudioTime = audioClip.trimStart + timeInAudio
+              
+              if (Math.abs(audio.currentTime - targetAudioTime) > 0.2) {
+                audio.currentTime = targetAudioTime
+              }
+              
+              if (audio.paused && audio.readyState >= 2) {
+                audio.play().catch(e => console.warn('Audio play error:', e))
+              }
+            } else {
+              if (!audio.paused) {
+                audio.pause()
+              }
             }
-            
-            // Play audio if not playing
-            if (audio.paused && audio.readyState >= 2) {
-              audio.play().catch(e => console.warn('Audio play error:', e))
-            }
+          }
+          
+          // Update progress
+          if (onProgress) {
+            onProgress(Math.min(95, (frame / totalFrames) * 90))
+          }
+          
+          // Schedule next frame
+          if (frame < totalFrames - 1) {
+            setTimeout(() => renderFrame(frame + 1), frameTime * 1000)
           } else {
-            // Pause audio if outside clip range
-            if (!audio.paused) {
-              audio.pause()
-            }
+            renderFrame(frame + 1) // Final frame
           }
         }
         
-        // Optimized frame timing
-        if (frame < totalFrames - 1) {
-          await new Promise(r => setTimeout(r, frameTime * 1000))
-        }
-      }
-      
-      // Stop all audio
-      audioElements.forEach(audio => {
-        audio.pause()
-        audio.currentTime = 0
-      })
-      
-      // Wait a bit to ensure all frames are captured
-      await new Promise(r => setTimeout(r, 500))
-      
-      // Stop recording
-      if (recordingStarted && mediaRecorder.state !== 'inactive') {
-        mediaRecorder.stop()
-      } else {
-        setError('Recording was not started properly')
-        setIsDownloading(false)
-      }
-      
-    } catch (err: any) {
-      console.error('Download error:', err)
-      setError(err?.message || 'Failed to download video')
-      setIsDownloading(false)
-    }
+        // Start rendering
+        renderFrame(0)
+      }).catch(reject)
+    })
   }
-  
+
   // Handle export
   const handleExport = async () => {
     if (!campaignId || !campaign) return
     
     setIsExporting(true)
     setExportProgress(0)
+    setError(null)
     
     try {
-      // Get timeline state from store
-      const timelineState = useEditorStore.getState().getTimelineState()
+      // Record video from timeline
+      setExportProgress(5)
+      const videoBlob = await recordTimelineVideo((progress) => {
+        setExportProgress(Math.min(90, 5 + progress * 0.85)) // 5% to 90%
+      })
       
-      // Call export API
-      const response = await manualEditing.exportEdit(campaignId, timelineState)
-      const jobId = response.data.job_id
+      // Upload to backend
+      setExportProgress(90)
+      const response = await manualEditing.exportEditUpload(campaignId, videoBlob)
       
-      // Poll for completion
-      await pollExportJob(jobId)
+      setExportProgress(100)
       
       // Refresh campaign data to get updated manual_editing_done flag
       try {
@@ -579,63 +589,18 @@ export const ManualEditing = () => {
         console.warn('Failed to refresh campaign data:', err)
       }
       
-      // Navigate back to campaign dashboard (not results page)
+      // Navigate back to campaign dashboard
       if (campaign.perfume_id) {
         navigate(`/perfumes/${campaign.perfume_id}`)
       } else {
-        // Fallback: navigate to dashboard if perfume_id not available
         navigate('/dashboard')
       }
     } catch (err: any) {
       console.error('Export failed:', err)
-      setError(err?.response?.data?.detail || 'Export failed')
+      setError(err?.message || err?.response?.data?.detail || 'Export failed')
       setIsExporting(false)
       setExportProgress(0)
     }
-  }
-  
-  // Poll export job status by checking campaign status
-  const pollExportJob = async (jobId: string) => {
-    const maxAttempts = 300 // 5 minutes max (1 second intervals)
-    let attempts = 0
-    
-    while (attempts < maxAttempts) {
-      try {
-        // Poll campaign status to check if manual_editing_done is true
-        const updatedCampaign = await getCampaign(campaignId!)
-        
-        if (updatedCampaign.manual_editing_done) {
-          // Export completed successfully
-          setExportProgress(100)
-          return
-        }
-        
-        // Update progress based on attempts
-        setExportProgress(Math.min(95, (attempts / maxAttempts) * 90))
-        
-        // Wait 1 second before next poll
-        await new Promise(resolve => setTimeout(resolve, 1000))
-        attempts++
-      } catch (err) {
-        console.error('Error polling job:', err)
-        // Continue polling even if one request fails
-        await new Promise(resolve => setTimeout(resolve, 1000))
-        attempts++
-      }
-    }
-    
-    // Timeout - check one more time
-    try {
-      const updatedCampaign = await getCampaign(campaignId!)
-      if (updatedCampaign.manual_editing_done) {
-        setExportProgress(100)
-        return
-      }
-    } catch (err) {
-      console.error('Final status check failed:', err)
-    }
-    
-    setExportProgress(100)
   }
   
   if (isLoading) {

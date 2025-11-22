@@ -31,7 +31,8 @@ from app.services.video_processor import (
     trim_video,
     concatenate_videos,
     mix_audio,
-    get_video_duration
+    get_video_duration,
+    create_black_video
 )
 from app.config import settings
 
@@ -416,18 +417,21 @@ class ManualEditExportPipeline:
             
             # Use temp directory for all operations
             with tempfile.TemporaryDirectory() as tmpdir:
-                # STEP 1: Download scenes from S3 and apply edits
-                logger.info("Step 1: Downloading scenes and applying timeline edits...")
-                edited_scene_paths = await self._download_and_edit_scenes(
+                # STEP 1: Download scenes from S3, apply edits, and build timeline segments
+                logger.info("Step 1: Downloading scenes, applying timeline edits, and building timeline...")
+                timeline_segments = await self._download_and_edit_scenes(
                     campaign_json=campaign_json,
                     variation_index=variation_index,
                     tmpdir=tmpdir
                 )
                 
-                # STEP 2: Concatenate edited scenes in timeline order
-                logger.info("Step 2: Concatenating edited scenes...")
+                if not timeline_segments:
+                    raise ValueError("No timeline segments created")
+                
+                # STEP 2: Concatenate timeline segments in order
+                logger.info(f"Step 2: Concatenating {len(timeline_segments)} timeline segments...")
                 concat_path = os.path.join(tmpdir, "concatenated.mp4")
-                await concatenate_videos(edited_scene_paths, concat_path)
+                await concatenate_videos(timeline_segments, concat_path)
                 
                 # STEP 3: Download and mix audio
                 logger.info("Step 3: Downloading and mixing audio...")
@@ -538,22 +542,51 @@ class ManualEditExportPipeline:
         variation_index: int,
         tmpdir: str
     ) -> List[str]:
-        """Download scenes from S3 and apply timeline edits (trim)."""
+        """
+        Download scenes from S3, apply timeline edits (trim), and build timeline segments.
+        
+        Returns list of video file paths in timeline order (including gap fills).
+        """
         video_clips = self.timeline_state.get('video_clips', [])
+        total_duration = self.timeline_state.get('total_duration', 0)
         
         if not video_clips:
             raise ValueError("No video clips in timeline state")
         
+        if total_duration <= 0:
+            raise ValueError(f"Invalid total duration: {total_duration}")
+        
         # Sort clips by position in timeline
         sorted_clips = sorted(video_clips, key=lambda c: c.get('position', 0))
         
-        edited_scene_paths = []
+        # Build timeline segments (clips + gaps)
+        timeline_segments = []
+        current_time = 0.0
         
         for clip in sorted_clips:
+            clip_position = clip.get('position', 0)
+            clip_effective_duration = clip.get('effective_duration', 0)
+            clip_end = clip_position + clip_effective_duration
+            
+            # Fill gap before this clip (if any)
+            if clip_position > current_time:
+                gap_duration = clip_position - current_time
+                if gap_duration > 0.1:  # Only create gap if > 0.1s
+                    gap_path = os.path.join(tmpdir, f"gap_{len(timeline_segments)}.mp4")
+                    await create_black_video(gap_duration, gap_path)
+                    timeline_segments.append(gap_path)
+                    logger.info(f"Created gap segment: {gap_duration}s")
+                current_time = clip_position
+            
             # Extract scene index from library_id (format: "scene-{index}")
             library_id = clip.get('library_id', '')
             if not library_id.startswith('scene-'):
                 logger.warning(f"Invalid library_id format: {library_id}, skipping")
+                # Create black video for missing clip
+                missing_path = os.path.join(tmpdir, f"missing_{len(timeline_segments)}.mp4")
+                await create_black_video(clip_effective_duration, missing_path)
+                timeline_segments.append(missing_path)
+                current_time = clip_end
                 continue
             
             scene_index = int(library_id.replace('scene-', ''))
@@ -568,32 +601,83 @@ class ManualEditExportPipeline:
             )
             
             # Download scene from S3
-            scene_path = os.path.join(tmpdir, f"scene_{scene_index}.mp4")
+            scene_path = os.path.join(tmpdir, f"scene_{scene_index}_raw.mp4")
             bucket_name, s3_key = parse_s3_url(scene_s3_url)
             s3_client = get_s3_client()
             s3_client.download_file(bucket_name, s3_key, scene_path)
             
-            # Apply trim if needed
+            # Get actual video duration
+            actual_duration = await get_video_duration(scene_path)
+            
+            # Apply trim based on clip settings
             trim_start = clip.get('trim_start', 0)
-            trim_end = clip.get('trim_end', clip.get('duration', 0))
-            clip_duration = clip.get('duration', 0)
+            trim_end = clip.get('trim_end', clip.get('duration', actual_duration))
             
-            if trim_start > 0 or trim_end < clip_duration:
-                # Apply trim
-                trimmed_path = os.path.join(tmpdir, f"scene_{scene_index}_trimmed.mp4")
-                await trim_video(scene_path, trim_start, trim_end, trimmed_path)
-                edited_scene_paths.append(trimmed_path)
-                
-                # Clean up original
-                if os.path.exists(scene_path):
-                    os.unlink(scene_path)
+            # Ensure trim_end doesn't exceed actual duration
+            trim_end = min(trim_end, actual_duration)
+            trim_duration = trim_end - trim_start
+            
+            # Ensure we don't exceed effective duration
+            if trim_duration > clip_effective_duration:
+                trim_duration = clip_effective_duration
+                trim_end = trim_start + trim_duration
+            
+            if trim_duration <= 0:
+                logger.warning(f"Invalid trim duration for scene {scene_index}, skipping")
+                # Create black video for invalid clip
+                missing_path = os.path.join(tmpdir, f"invalid_{len(timeline_segments)}.mp4")
+                await create_black_video(clip_effective_duration, missing_path)
+                timeline_segments.append(missing_path)
+                current_time = clip_end
+                continue
+            
+            # Trim the video
+            trimmed_path = os.path.join(tmpdir, f"scene_{scene_index}_trimmed.mp4")
+            await trim_video(scene_path, trim_start, trim_end, trimmed_path)
+            
+            # If trimmed duration doesn't match effective duration, pad or trim further
+            trimmed_duration = await get_video_duration(trimmed_path)
+            if abs(trimmed_duration - clip_effective_duration) > 0.1:
+                # Duration mismatch - need to adjust
+                if trimmed_duration < clip_effective_duration:
+                    # Pad with black frames at the end
+                    padded_path = os.path.join(tmpdir, f"scene_{scene_index}_padded.mp4")
+                    pad_duration = clip_effective_duration - trimmed_duration
+                    # Use FFmpeg to pad
+                    from app.services.video_processor import concatenate_videos
+                    gap_path = os.path.join(tmpdir, f"scene_{scene_index}_pad_gap.mp4")
+                    await create_black_video(pad_duration, gap_path)
+                    await concatenate_videos([trimmed_path, gap_path], padded_path)
+                    timeline_segments.append(padded_path)
+                    # Cleanup
+                    if os.path.exists(gap_path):
+                        os.unlink(gap_path)
+                else:
+                    # Trim further to match effective duration
+                    final_path = os.path.join(tmpdir, f"scene_{scene_index}_final.mp4")
+                    await trim_video(trimmed_path, 0, clip_effective_duration, final_path)
+                    timeline_segments.append(final_path)
             else:
-                # No trim needed
-                edited_scene_paths.append(scene_path)
+                timeline_segments.append(trimmed_path)
             
-            logger.info(f"Processed scene {scene_index}: trim={trim_start}s-{trim_end}s")
+            # Clean up original
+            if os.path.exists(scene_path):
+                os.unlink(scene_path)
+            
+            current_time = clip_end
+            logger.info(f"Processed scene {scene_index}: position={clip_position}s, duration={clip_effective_duration}s, trim={trim_start}s-{trim_end}s")
         
-        return edited_scene_paths
+        # Fill gap at the end (if any)
+        if current_time < total_duration:
+            gap_duration = total_duration - current_time
+            if gap_duration > 0.1:
+                gap_path = os.path.join(tmpdir, f"gap_end_{len(timeline_segments)}.mp4")
+                await create_black_video(gap_duration, gap_path)
+                timeline_segments.append(gap_path)
+                logger.info(f"Created end gap segment: {gap_duration}s")
+        
+        logger.info(f"✅ Built timeline with {len(timeline_segments)} segments (total: {total_duration}s)")
+        return timeline_segments
     
     async def _cleanup_s3_draft_files(self, variation_index: int):
         """Delete all draft files from S3 (scenes, music)."""

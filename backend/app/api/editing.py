@@ -1,20 +1,22 @@
 """API endpoints for campaign editing."""
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
-from uuid import UUID
+from uuid import UUID, uuid4
 from pydantic import BaseModel
 import logging
 import boto3
 from io import BytesIO
+from datetime import datetime
 
 from app.database.connection import get_db
-from app.database.crud import get_campaign_by_id
+from app.database.crud import get_campaign_by_id, update_campaign
 from app.api.auth import verify_campaign_ownership
 from app.jobs.worker import create_worker
 from app.config import settings
+from app.utils.s3_utils import get_s3_client
 
 logger = logging.getLogger(__name__)
 
@@ -534,24 +536,41 @@ async def export_manual_edit(
     _: bool = Depends(verify_campaign_ownership)
 ):
     """
-    Export manually edited video.
+    Export manually edited video (DEPRECATED - use /export-upload instead).
     
-    **Request Body:**
-    - timeline_state: Timeline state with video/audio clips
-    - export_settings: Optional export settings
+    This endpoint is kept for backward compatibility but should not be used.
+    The new client-side export uses /export-upload endpoint.
+    """
+    raise HTTPException(
+        status_code=410,
+        detail="This endpoint is deprecated. Use /export-upload with file upload instead."
+    )
+
+
+@router.post("/{campaign_id}/editing/export-upload")
+async def export_manual_edit_upload(
+    campaign_id: UUID,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    _: bool = Depends(verify_campaign_ownership)
+):
+    """
+    Export manually edited video by uploading the final video file.
     
-    **Returns:** Job ID for status polling
+    **Request:**
+    - file: Video file (WebM or MP4) from client-side recording
+    
+    **Returns:** Success message with final video URL
     
     **Errors:**
     - 400: If manual_editing_done is True (already finalized)
     - 404: Campaign not found
-    - 503: Worker not available
+    - 500: Upload or processing failed
     """
-    if not worker_config:
-        raise HTTPException(
-            status_code=503,
-            detail="Worker not available. Redis connection required."
-        )
+    import tempfile
+    import os
+    from app.utils.s3_utils import upload_final_video, get_s3_client
+    from app.services.video_processor import get_video_duration
     
     campaign = get_campaign_by_id(db, campaign_id)
     if not campaign:
@@ -564,23 +583,157 @@ async def export_manual_edit(
             detail="Manual editing already completed. Campaign is finalized."
         )
     
-    # Enqueue export job
-    job = worker_config.enqueue_manual_edit_export_job(
-        campaign_id=str(campaign_id),
-        timeline_state=request.timeline_state.dict(),
-        export_settings=request.export_settings or {}
-    )
+    variation_index = campaign.selected_variation_index or 0
     
-    # Estimate duration based on video length (rough estimate: 2-5 min for typical video)
-    estimated_duration = int(request.timeline_state.total_duration / 10)  # Rough estimate
-    if estimated_duration < 120:
-        estimated_duration = 120  # Minimum 2 minutes
-    elif estimated_duration > 300:
-        estimated_duration = 300  # Maximum 5 minutes
+    # Save uploaded file temporarily
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp_file:
+        try:
+            # Read uploaded file
+            content = await file.read()
+            tmp_file.write(content)
+            tmp_path = tmp_file.name
+            
+            logger.info(f"📤 Received video file: {len(content)} bytes for campaign {campaign_id}")
+            
+            # Upload to S3
+            final_result = await upload_final_video(
+                brand_id=str(campaign.brand_id),
+                perfume_id=str(campaign.perfume_id),
+                campaign_id=str(campaign_id),
+                variation_index=variation_index,
+                file_path=tmp_path
+            )
+            new_final_video_url = final_result['url']
+            
+            logger.info(f"✅ Uploaded final video to S3: {new_final_video_url}")
+            
+            # Cleanup S3 draft files (scenes, music)
+            logger.info("Cleaning up S3 draft files...")
+            await _cleanup_s3_draft_files(
+                campaign=campaign,
+                variation_index=variation_index
+            )
+            
+            # Update database
+            campaign_json = campaign.campaign_json
+            if isinstance(campaign_json, str):
+                import json
+                campaign_json = json.loads(campaign_json)
+            
+            # Update variationPaths with new final video URL
+            if 'variationPaths' not in campaign_json:
+                campaign_json['variationPaths'] = {}
+            if f'variation_{variation_index}' not in campaign_json['variationPaths']:
+                campaign_json['variationPaths'][f'variation_{variation_index}'] = {
+                    'aspectExports': {}
+                }
+            campaign_json['variationPaths'][f'variation_{variation_index}']['aspectExports']['9:16'] = new_final_video_url
+            
+            # Add edit history record
+            if 'edit_history' not in campaign_json:
+                campaign_json['edit_history'] = {
+                    'edits': [],
+                    'total_edit_cost': 0.0,
+                    'edit_count': 0
+                }
+            
+            edit_record = {
+                'edit_id': str(uuid4()),
+                'timestamp': datetime.utcnow().isoformat() + 'Z',
+                'edit_type': 'manual_edit_export_upload',
+                'cost': 0.0,
+                'duration_seconds': 0
+            }
+            campaign_json['edit_history']['edits'].append(edit_record)
+            campaign_json['edit_history']['edit_count'] += 1
+            
+            # Update campaign - SET manual_editing_done = True
+            logger.info(f"🔒 Setting manual_editing_done=True for campaign {campaign_id}")
+            updated_campaign = update_campaign(
+                db,
+                campaign_id,
+                campaign_json=campaign_json,
+                status="completed",
+                manual_editing_done=True  # Lock campaign - no more editing
+            )
+            if updated_campaign:
+                logger.info(f"✅ Successfully updated campaign {campaign_id}: manual_editing_done={updated_campaign.manual_editing_done}")
+            else:
+                logger.error(f"❌ Failed to update campaign {campaign_id} - update_campaign returned None")
+            
+            return {
+                "success": True,
+                "message": "Video exported successfully",
+                "video_url": new_final_video_url,
+                "campaign_id": str(campaign_id)
+            }
+            
+        finally:
+            # Clean up temp file
+            if os.path.exists(tmp_path):
+                try:
+                    os.unlink(tmp_path)
+                except Exception as e:
+                    logger.warning(f"Failed to delete temp file {tmp_path}: {e}")
+
+
+async def _cleanup_s3_draft_files(campaign, variation_index: int):
+    """Helper function to cleanup S3 draft files."""
+    import asyncio
+    from app.config import settings
     
-    return ExportEditResponse(
-        job_id=job.id,
-        estimated_duration_seconds=estimated_duration,
-        message="Manual edit export job enqueued"
+    def delete_s3_object(bucket: str, key: str, client):
+        try:
+            client.delete_object(Bucket=bucket, Key=key)
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to delete S3 object {key}: {e}")
+            return False
+    
+    loop = asyncio.get_event_loop()
+    campaign_json = campaign.campaign_json
+    if isinstance(campaign_json, str):
+        import json
+        campaign_json = json.loads(campaign_json)
+    
+    scenes = campaign_json.get('scenes', [])
+    s3_client = get_s3_client()
+    bucket_name = settings.s3_bucket_name
+    
+    # Delete all scene videos
+    for i in range(len(scenes)):
+        scene_s3_key = (
+            f"brands/{str(campaign.brand_id)}/perfumes/{str(campaign.perfume_id)}/campaigns/{str(campaign.campaign_id)}/"
+            f"variation_{variation_index}/draft/scene_{i+1}_bg.mp4"
+        )
+        try:
+            success = await loop.run_in_executor(
+                None,
+                delete_s3_object,
+                bucket_name,
+                scene_s3_key,
+                s3_client
+            )
+            if success:
+                logger.info(f"✅ Deleted scene {i+1} from S3: {scene_s3_key}")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to delete scene {i+1}: {e}")
+    
+    # Delete music file
+    music_s3_key = (
+        f"brands/{str(campaign.brand_id)}/perfumes/{str(campaign.perfume_id)}/campaigns/{str(campaign.campaign_id)}/"
+        f"variation_{variation_index}/draft/music.mp3"
     )
+    try:
+        success = await loop.run_in_executor(
+            None,
+            delete_s3_object,
+            bucket_name,
+            music_s3_key,
+            s3_client
+        )
+        if success:
+            logger.info(f"✅ Deleted music from S3: {music_s3_key}")
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to delete music: {e}")
 

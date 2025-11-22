@@ -276,10 +276,10 @@ async def extract_audio_from_video(
         video_path: Path to input video file
         output_path: Path to output audio file
         audio_codec: Audio codec (mp3, aac, etc.)
-        
+    
     Returns:
         Output path string
-        
+    
     Raises:
         RuntimeError: If FFmpeg operation fails
     """
@@ -314,4 +314,68 @@ async def extract_audio_from_video(
     except Exception as e:
         logger.error(f"Error extracting audio: {e}", exc_info=True)
         raise RuntimeError(f"Failed to extract audio: {str(e)}")
+
+
+async def create_black_video(
+    duration: float,
+    output_path: str,
+    width: int = 1080,
+    height: int = 1920,
+    fps: int = 30
+) -> str:
+    """
+    Create a black video segment of specified duration.
+    
+    Args:
+        duration: Duration in seconds
+        output_path: Path to output video file
+        width: Video width in pixels (default: 1080 for 9:16)
+        height: Video height in pixels (default: 1920 for 9:16)
+        fps: Frame rate (default: 30)
+    
+    Returns:
+        Output path string
+    
+    Raises:
+        RuntimeError: If FFmpeg operation fails
+    """
+    if duration <= 0:
+        raise ValueError(f"Duration must be positive, got: {duration}")
+    
+    logger.info(f"Creating black video: {duration}s ({width}x{height} @ {fps}fps)")
+    
+    cmd = [
+        'ffmpeg',
+        '-y',  # Overwrite output file
+        '-f', 'lavfi',
+        '-i', f'color=c=black:s={width}x{height}:d={duration}:r={fps}',
+        '-c:v', 'libx264',
+        '-preset', 'fast',
+        '-crf', '23',
+        '-pix_fmt', 'yuv420p',
+        str(output_path)
+    ]
+    
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        
+        stdout, stderr = await process.communicate()
+        
+        if process.returncode != 0:
+            error_msg = stderr.decode() if stderr else "Unknown error"
+            logger.error(f"FFmpeg black video creation failed: {error_msg}")
+            raise RuntimeError(f"FFmpeg black video creation failed: {error_msg}")
+        
+        logger.info(f"✅ Black video created successfully: {output_path}")
+        return output_path
+        
+    except Exception as e:
+        logger.error(f"Error creating black video: {e}", exc_info=True)
+        raise RuntimeError(f"Failed to create black video: {str(e)}")
+
+
 
