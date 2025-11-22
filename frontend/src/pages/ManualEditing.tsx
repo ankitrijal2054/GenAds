@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Button } from '@/components/ui'
@@ -8,7 +8,7 @@ import { MediaLibrarySidebar } from '@/components/editing/MediaLibrarySidebar'
 import { useCampaigns } from '@/hooks/useCampaigns'
 import { useEditorStore, type TimelineClip } from '@/stores/editorStore'
 import { manualEditing } from '@/services/api'
-import { ArrowLeft, CheckCircle2, Loader2, FolderOpen } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Loader2, FolderOpen, Download } from 'lucide-react'
 
 /**
  * Initialize timeline from campaign data
@@ -137,9 +137,13 @@ export const ManualEditing = () => {
   const [campaign, setCampaign] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isExporting, setIsExporting] = useState(false)
+  const [isDownloading, setIsDownloading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [exportProgress, setExportProgress] = useState(0)
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   
   // Load campaign and initialize timeline
   useEffect(() => {
@@ -166,6 +170,277 @@ export const ManualEditing = () => {
     
     loadCampaign()
   }, [campaignId, navigate, getCampaign])
+  
+  // Handle direct download (client-side recording)
+  const handleDownload = async () => {
+    if (!campaignId) return
+    
+    setIsDownloading(true)
+    setError(null)
+    
+    try {
+      const store = useEditorStore.getState()
+      const { timelineVideoClips, timelineAudioClips } = store
+      
+      if (timelineVideoClips.length === 0 && timelineAudioClips.length === 0) {
+        setError('No clips to download')
+        setIsDownloading(false)
+        return
+      }
+      
+      // Create canvas for rendering
+      const canvas = document.createElement('canvas')
+      canvas.width = 1080
+      canvas.height = 1920
+      const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        throw new Error('Could not get canvas context')
+      }
+      
+      // Fill with black background initially
+      ctx.fillStyle = '#000000'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      
+      // Create MediaRecorder from canvas stream
+      // Use requestAnimationFrame to ensure continuous updates
+      const canvasStream = canvas.captureStream(30) // 30 fps
+      
+      // Keep canvas active by drawing periodically
+      let animationFrameId: number
+      const keepCanvasActive = () => {
+        // Draw a tiny pixel to keep stream active
+        ctx.fillStyle = '#000000'
+        ctx.fillRect(0, 0, 1, 1)
+        animationFrameId = requestAnimationFrame(keepCanvasActive)
+      }
+      keepCanvasActive()
+      
+      // Check for supported MIME types
+      let mimeType = 'video/webm'
+      if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) {
+        mimeType = 'video/webm;codecs=vp9'
+      } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8')) {
+        mimeType = 'video/webm;codecs=vp8'
+      } else if (MediaRecorder.isTypeSupported('video/webm')) {
+        mimeType = 'video/webm'
+      }
+      
+      const mediaRecorder = new MediaRecorder(canvasStream, {
+        mimeType,
+        videoBitsPerSecond: 5000000
+      })
+      
+      const chunks: Blob[] = []
+      let recordingStarted = false
+      
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          chunks.push(e.data)
+        }
+      }
+      
+      mediaRecorder.onstop = () => {
+        if (chunks.length === 0) {
+          setError('No video data recorded. Please try again.')
+          setIsDownloading(false)
+          return
+        }
+        
+        const blob = new Blob(chunks, { type: mimeType })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        const extension = mimeType.includes('webm') ? 'webm' : 'mp4'
+        a.download = `edited-video-${campaignId}-${Date.now()}.${extension}`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+        setIsDownloading(false)
+      }
+      
+      mediaRecorder.onerror = (e) => {
+        console.error('MediaRecorder error:', e)
+        setError('Recording error occurred')
+        setIsDownloading(false)
+      }
+      
+      // Start recording
+      mediaRecorder.start(100) // Collect data every 100ms
+      recordingStarted = true
+      
+      // Render timeline to canvas frame by frame
+      const frameRate = 30
+      const frameTime = 1 / frameRate
+      const totalDuration = store.timelineTotalDuration || 120
+      
+      // Sort clips by position to ensure correct order
+      const sortedClips = [...timelineVideoClips].sort((a, b) => a.position - b.position)
+      
+      // Pre-load all video clips
+      const videoElements: Map<string, HTMLVideoElement> = new Map()
+      
+      for (const clip of sortedClips) {
+        const clipSource = store.getClipSource(clip.id) || clip.videoUrl
+        if (!clipSource) continue
+        
+        const video = document.createElement('video')
+        video.crossOrigin = 'anonymous'
+        video.muted = false
+        video.playsInline = true
+        video.preload = 'auto'
+        
+        await new Promise<void>((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(new Error(`Timeout loading video: ${clip.name}`))
+          }, 15000)
+          
+          const cleanup = () => {
+            clearTimeout(timeout)
+            video.removeEventListener('loadeddata', onLoadedData)
+            video.removeEventListener('error', onError)
+            video.removeEventListener('canplay', onCanPlay)
+          }
+          
+          const onLoadedData = () => {
+            cleanup()
+            resolve()
+          }
+          
+          const onCanPlay = () => {
+            if (video.readyState >= 2) {
+              cleanup()
+              resolve()
+            }
+          }
+          
+          const onError = (e: Event) => {
+            cleanup()
+            console.error('Video load error:', e, clipSource)
+            reject(new Error(`Failed to load video: ${clip.name}`))
+          }
+          
+          video.addEventListener('loadeddata', onLoadedData)
+          video.addEventListener('canplay', onCanPlay)
+          video.addEventListener('error', onError)
+          
+          video.src = clipSource
+          video.load()
+        })
+        
+        videoElements.set(clip.id, video)
+      }
+      
+      // Render frame by frame through entire timeline
+      const totalFrames = Math.ceil(totalDuration * frameRate)
+      
+      for (let frame = 0; frame < totalFrames; frame++) {
+        const currentTime = frame / frameRate
+        
+        // Find active clip at this time
+        const activeClip = sortedClips.find(
+          clip => currentTime >= clip.position && 
+                  currentTime < clip.position + clip.effectiveDuration
+        )
+        
+        if (activeClip) {
+          const video = videoElements.get(activeClip.id)
+          if (video) {
+            // Calculate time within clip
+            const timeInClip = currentTime - activeClip.position
+            const targetVideoTime = activeClip.trimStart + timeInClip
+            
+            // Seek to correct time if needed (only seek if significantly off)
+            // For better performance, only seek every few frames
+            if (frame % 10 === 0 || Math.abs(video.currentTime - targetVideoTime) > 0.3) {
+              video.currentTime = targetVideoTime
+              // Minimal wait for seek
+              if (frame % 10 === 0) {
+                await new Promise(r => setTimeout(r, 20))
+              }
+            } else {
+              // Small incremental update for smoother playback
+              video.currentTime = targetVideoTime
+            }
+            
+            // Draw current frame
+            try {
+              if (video.videoWidth > 0 && video.videoHeight > 0) {
+                // Calculate aspect ratio and center the video
+                const videoAspect = video.videoWidth / video.videoHeight
+                const canvasAspect = canvas.width / canvas.height
+                
+                let drawWidth = canvas.width
+                let drawHeight = canvas.height
+                let drawX = 0
+                let drawY = 0
+                
+                if (videoAspect > canvasAspect) {
+                  // Video is wider - fit to width
+                  drawHeight = canvas.width / videoAspect
+                  drawY = (canvas.height - drawHeight) / 2
+                } else {
+                  // Video is taller - fit to height
+                  drawWidth = canvas.height * videoAspect
+                  drawX = (canvas.width - drawWidth) / 2
+                }
+                
+                // Fill black background
+                ctx.fillStyle = '#000000'
+                ctx.fillRect(0, 0, canvas.width, canvas.height)
+                
+                // Draw video frame
+                ctx.drawImage(video, drawX, drawY, drawWidth, drawHeight)
+              } else {
+                // Video not ready, draw black
+                ctx.fillStyle = '#000000'
+                ctx.fillRect(0, 0, canvas.width, canvas.height)
+              }
+            } catch (e) {
+              console.error('Error drawing frame:', e)
+              // Fill with black if draw fails
+              ctx.fillStyle = '#000000'
+              ctx.fillRect(0, 0, canvas.width, canvas.height)
+            }
+          } else {
+            // No video element, draw black
+            ctx.fillStyle = '#000000'
+            ctx.fillRect(0, 0, canvas.width, canvas.height)
+          }
+        } else {
+          // No active clip at this time, draw black
+          ctx.fillStyle = '#000000'
+          ctx.fillRect(0, 0, canvas.width, canvas.height)
+        }
+        
+        // Optimized frame timing - use setTimeout with precise timing
+        if (frame < totalFrames - 1) {
+          await new Promise(r => setTimeout(r, frameTime * 1000))
+        }
+      }
+      
+      // Stop the animation frame loop
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId)
+      }
+      
+      // Wait a bit to ensure all frames are captured
+      await new Promise(r => setTimeout(r, 500))
+      
+      // Stop recording
+      if (recordingStarted && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop()
+      } else {
+        setError('Recording was not started properly')
+        setIsDownloading(false)
+      }
+      
+    } catch (err: any) {
+      console.error('Download error:', err)
+      setError(err?.message || 'Failed to download video')
+      setIsDownloading(false)
+    }
+  }
   
   // Handle export
   const handleExport = async () => {
@@ -275,6 +550,25 @@ export const ManualEditing = () => {
               Media Library
             </Button>
           )}
+          {/* Download Button */}
+          <Button
+            onClick={handleDownload}
+            disabled={isDownloading || isExporting}
+            variant="ghost"
+            className="text-gray-400 hover:text-white"
+          >
+            {isDownloading ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Downloading...
+              </>
+            ) : (
+              <>
+                <Download className="w-4 h-4 mr-2" />
+                Download
+              </>
+            )}
+          </Button>
           {isExporting && (
             <div className="flex items-center gap-2 text-sm text-gray-400">
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -282,22 +576,22 @@ export const ManualEditing = () => {
             </div>
           )}
           {!campaign?.manual_editing_done && (
-            <Button
-              onClick={handleExport}
-              disabled={isExporting}
-              className="bg-accent-gold text-charcoal-950 hover:bg-accent-gold-dark"
-            >
-              {isExporting ? 'Exporting...' : 'Export to Campaign'}
-            </Button>
+          <Button
+            onClick={handleExport}
+              disabled={isExporting || isDownloading}
+            className="bg-accent-gold text-charcoal-950 hover:bg-accent-gold-dark"
+          >
+            {isExporting ? 'Exporting...' : 'Export to Campaign'}
+          </Button>
           )}
         </div>
       </div>
       
       {/* Main Content Area */}
       <div className="flex-1 flex min-h-0 relative">
-        {/* Preview Player */}
+      {/* Preview Player */}
         <div className={`flex-1 min-h-0 p-4 transition-all duration-300 ${isSidebarOpen ? 'mr-80' : ''}`}>
-          <PreviewPlayer />
+        <PreviewPlayer />
         </div>
         
         {/* Media Library Sidebar */}
