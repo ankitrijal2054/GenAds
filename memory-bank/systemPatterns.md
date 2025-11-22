@@ -994,5 +994,133 @@ const pollEditJob = async (jobId: string) => {
 
 ---
 
-**Last Updated:** January 20, 2025 (Phase 3 Editing Feature - Backend Complete)
+---
+
+## Manual Editing Patterns (Phase 4 - January 20, 2025)
+
+### Timeline-Based Editing Pattern
+
+**Pattern:** Manual video editing with timeline interface
+
+```typescript
+// Timeline state managed via Zustand store
+const timelineState = {
+  video_clips: [
+    { id: 'scene-0', position: 0, trim_start: 0, trim_end: 4, ... },
+    { id: 'scene-1', position: 4, trim_start: 0, trim_end: 5, ... },
+    // ... all 4 scenes
+  ],
+  audio_clips: [
+    { id: 'music-track', position: 0, trim_start: 0, trim_end: 30, ... }
+  ]
+}
+```
+
+**Why This Works:**
+- Adapted from existing Electron editing app (`editing/` folder)
+- Zustand store already web-compatible
+- Timeline state serializable for export
+- Supports trim, split, reorder operations
+
+### Export & Finalization Pattern
+
+**Pattern:** Export locks campaign and cleans up S3
+
+```python
+# Export pipeline steps:
+1. Download scenes from S3 → /tmp
+2. Download music from S3 → /tmp
+3. Apply timeline edits (trim, split, reorder) via FFmpeg
+4. Concatenate edited scenes
+5. Mix audio
+6. Upload final video to S3 (replaces old)
+7. Delete all draft files from S3 (scenes, music)
+8. Set manual_editing_done = True
+```
+
+**S3 Structure Before Export:**
+```
+draft/
+├── scene_1_bg.mp4
+├── scene_2_bg.mp4
+├── scene_3_bg.mp4
+├── scene_4_bg.mp4
+└── music.mp3
+final_video.mp4
+```
+
+**S3 Structure After Export:**
+```
+final_video.mp4  (only this remains)
+```
+
+**Why This Works:**
+- Reduces S3 storage costs (draft files removed)
+- Campaign becomes immutable (no editing conflicts)
+- Clear workflow: prompt-based → manual → finalized
+- One-way flag prevents accidental re-editing
+
+### Component Adaptation Pattern
+
+**Pattern:** Adapt Electron app components for web
+
+**Key Adaptations:**
+1. **Video Source:** Replace `clipforge://` protocol with S3 URLs/API proxy
+2. **Export:** Replace Electron IPC with REST API calls
+3. **File Handling:** Load from campaign data, not file system
+4. **State:** Use Zustand store (already web-compatible)
+
+**Example:**
+```typescript
+// Before (Electron):
+function getVideoSrc(filePath: string): string {
+  return `clipforge://${encodeURI(...)}`
+}
+
+// After (Web):
+function getVideoSrc(filePath: string): string {
+  if (filePath.startsWith('http') || filePath.startsWith('blob:')) {
+    return filePath
+  }
+  if (filePath.includes('amazonaws.com')) {
+    return `/api/video/proxy?url=${encodeURIComponent(filePath)}`
+  }
+  return filePath
+}
+```
+
+**Why This Works:**
+- Reuses existing editing components
+- Minimal code changes (mostly import paths)
+- Web-compatible video source handling
+- API-based export instead of IPC
+
+### Finalization Restriction Pattern
+
+**Pattern:** One-way flag prevents editing after export
+
+```python
+# Database flag
+manual_editing_done = Column(Boolean, default=False)
+
+# Set on export (not on page entry)
+if export_successful:
+    update_campaign(campaign_id, manual_editing_done=True)
+    cleanup_s3_draft_files()  # Remove scenes, music
+```
+
+**Frontend Behavior:**
+- ManualEditing page: Redirects if `manual_editing_done = True`
+- VideoResults page: Hides editing options if flag is `true`
+- API endpoints: Return 400 if flag is `true`
+
+**Why This Works:**
+- Prevents conflicts between editing modes
+- Ensures video consistency
+- Reduces storage costs
+- Clear user experience (campaign finalized)
+
+---
+
+**Last Updated:** January 20, 2025 (Phase 4 Manual Editing Implementation Complete)
 

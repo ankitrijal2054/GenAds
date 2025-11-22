@@ -73,3 +73,21 @@ export const editing = {
     api.get(`/api/campaigns/${campaignId}/edit-history`)
 }
 
+// PHASE 4: Manual Editing API endpoints
+export const manualEditing = {
+  getEditingScenes: (campaignId: string, variationIndex: number = 0) =>
+    api.get(`/api/campaigns/${campaignId}/editing/scenes`, {
+      params: { variation_index: variationIndex }
+    }),
+  
+  getEditingMusic: (campaignId: string, variationIndex: number = 0) =>
+    api.get(`/api/campaigns/${campaignId}/editing/music`, {
+      params: { variation_index: variationIndex }
+    }),
+  
+  exportEdit: (campaignId: string, timelineState: any) =>
+    api.post(`/api/campaigns/${campaignId}/editing/export`, {
+      timeline_state: timelineState
+    })
+}
+

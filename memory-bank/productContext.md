@@ -320,7 +320,28 @@ Users can now edit individual scenes in their generated videos:
 
 This enables rapid iteration - users can refine individual scenes until perfect, rather than regenerating entire videos.
 
+### Next-Generation Feature: Manual Video Editing (January 20, 2025 - Implementation Complete ✅)
+
+Users can now manually edit videos using a timeline interface:
+- **Purpose:** Fine-grained control over scene arrangement, trimming, and audio
+- **UX:** Navigate to manual editing → Timeline loads with all scenes → Edit → Export
+- **Features:** Drag-and-drop reordering, trim scenes, split scenes, adjust volume
+- **Finalization:** Export sets `manual_editing_done = True`, removes draft files from S3
+- **Restriction:** Once finalized, no further editing possible (prompt-based or manual)
+- **Storage:** Only `final_video.mp4` remains after export (draft files cleaned up)
+- **Result:** Professional video editing workflow with campaign finalization
+
+**Implementation Status:**
+- ✅ Timeline-based editing interface (trim, split, reorder)
+- ✅ Preview playback with timeline synchronization
+- ✅ Export pipeline with FFmpeg processing
+- ✅ S3 cleanup after export (removes draft files)
+- ✅ Database finalization flag (`manual_editing_done`)
+- ✅ Frontend restrictions (hides editing if finalized)
+
+This enables professional editing capabilities while maintaining campaign immutability after export.
+
 ---
 
-**Last Updated:** January 20, 2025 (Phase 3 Editing Feature - Backend Complete)
+**Last Updated:** January 20, 2025 (Phase 4 Manual Editing Implementation Complete)
 

@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from uuid import UUID
 from pydantic import BaseModel
 import logging
@@ -69,6 +69,46 @@ class EditHistoryRecord(BaseModel):
     changes_summary: Optional[str] = None
     cost: float
     duration_seconds: int
+
+
+# Phase 4: Manual Editing Schemas
+class MusicInfo(BaseModel):
+    """Music information for manual editing."""
+    audio_url: str
+    duration: float
+
+
+class TimelineClipState(BaseModel):
+    """Timeline clip state for export."""
+    id: str
+    library_id: str
+    name: str
+    track_type: str
+    duration: float
+    trim_start: float
+    trim_end: float
+    effective_duration: float
+    position: float
+
+
+class TimelineState(BaseModel):
+    """Timeline state for export."""
+    video_clips: List[TimelineClipState]
+    audio_clips: List[TimelineClipState]
+    total_duration: float
+
+
+class ExportEditRequest(BaseModel):
+    """Request to export edited video."""
+    timeline_state: TimelineState
+    export_settings: Optional[Dict[str, Any]] = None
+
+
+class ExportEditResponse(BaseModel):
+    """Response when export job is enqueued."""
+    job_id: str
+    estimated_duration_seconds: int
+    message: str
 
 
 # ============================================================================
@@ -361,4 +401,186 @@ async def stream_scene_video(
     except Exception as e:
         logger.error(f"❌ Unexpected error in stream_scene_video: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# ============================================================================
+# Phase 4: Manual Editing Endpoints
+# ============================================================================
+
+@router.get("/{campaign_id}/editing/scenes", response_model=List[SceneInfo])
+async def get_editing_scenes(
+    campaign_id: UUID,
+    variation_index: int = Query(0, description="Variation index (0, 1, 2)"),
+    db: Session = Depends(get_db),
+    _: bool = Depends(verify_campaign_ownership)
+):
+    """
+    Get all scenes for manual editing.
+    
+    **Returns:** List of scenes with S3 URLs
+    
+    **Errors:**
+    - 400: If manual_editing_done is True (scenes no longer exist)
+    - 404: Campaign not found
+    """
+    campaign = get_campaign_by_id(db, campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    
+    # Check if manual editing is already done - scenes no longer exist
+    if campaign.manual_editing_done:
+        raise HTTPException(
+            status_code=400,
+            detail="Manual editing already completed. Scenes no longer available."
+        )
+    
+    campaign_json = campaign.campaign_json
+    if isinstance(campaign_json, str):
+        import json
+        campaign_json = json.loads(campaign_json)
+    
+    scenes = campaign_json.get('scenes', [])
+    
+    from app.utils.s3_utils import get_scene_s3_url
+    
+    scene_infos = []
+    for i, scene in enumerate(scenes):
+        # Construct S3 URL for scene video
+        video_url = get_scene_s3_url(
+            brand_id=str(campaign.brand_id),
+            perfume_id=str(campaign.perfume_id),
+            campaign_id=str(campaign_id),
+            variation_index=variation_index,
+            scene_index=i
+        )
+        
+        scene_infos.append(SceneInfo(
+            scene_index=i,
+            scene_id=scene.get('scene_id', i),
+            role=scene.get('role', 'unknown'),
+            duration=scene.get('duration', 4),
+            background_prompt=scene.get('background_prompt', ''),
+            video_url=video_url,
+            thumbnail_url=None,
+            edit_count=scene.get('edit_count', 0),
+            last_edited_at=scene.get('last_edited_at')
+        ))
+    
+    return scene_infos
+
+
+@router.get("/{campaign_id}/editing/music", response_model=MusicInfo)
+async def get_editing_music(
+    campaign_id: UUID,
+    variation_index: int = Query(0, description="Variation index (0, 1, 2)"),
+    db: Session = Depends(get_db),
+    _: bool = Depends(verify_campaign_ownership)
+):
+    """
+    Get music/audio file for manual editing.
+    
+    **Returns:** Music info with S3 URL and duration
+    
+    **Errors:**
+    - 400: If manual_editing_done is True (music no longer exists)
+    - 404: Campaign not found or music not available
+    """
+    campaign = get_campaign_by_id(db, campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    
+    # Check if manual editing is already done - music no longer exists
+    if campaign.manual_editing_done:
+        raise HTTPException(
+            status_code=400,
+            detail="Manual editing already completed. Music no longer available."
+        )
+    
+    campaign_json = campaign.campaign_json
+    if isinstance(campaign_json, str):
+        import json
+        campaign_json = json.loads(campaign_json)
+    
+    # Get audio URL from campaign_json
+    audio_url = campaign_json.get('audio_url', '')
+    if not audio_url:
+        # Construct S3 URL using utility function
+        from app.utils.s3_utils import get_audio_s3_url
+        audio_url = get_audio_s3_url(
+            brand_id=str(campaign.brand_id),
+            perfume_id=str(campaign.perfume_id),
+            campaign_id=str(campaign_id),
+            variation_index=variation_index
+        )
+    
+    # Get duration from campaign_json or estimate from scenes
+    audio_duration = campaign_json.get('audio_duration', 0.0)
+    if not audio_duration:
+        # Estimate from scenes
+        scenes = campaign_json.get('scenes', [])
+        audio_duration = sum(scene.get('duration', 4) for scene in scenes)
+    
+    return MusicInfo(
+        audio_url=audio_url,
+        duration=float(audio_duration)
+    )
+
+
+@router.post("/{campaign_id}/editing/export", response_model=ExportEditResponse)
+async def export_manual_edit(
+    campaign_id: UUID,
+    request: ExportEditRequest,
+    db: Session = Depends(get_db),
+    _: bool = Depends(verify_campaign_ownership)
+):
+    """
+    Export manually edited video.
+    
+    **Request Body:**
+    - timeline_state: Timeline state with video/audio clips
+    - export_settings: Optional export settings
+    
+    **Returns:** Job ID for status polling
+    
+    **Errors:**
+    - 400: If manual_editing_done is True (already finalized)
+    - 404: Campaign not found
+    - 503: Worker not available
+    """
+    if not worker_config:
+        raise HTTPException(
+            status_code=503,
+            detail="Worker not available. Redis connection required."
+        )
+    
+    campaign = get_campaign_by_id(db, campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    
+    # Check if manual editing is already done - cannot export again
+    if campaign.manual_editing_done:
+        raise HTTPException(
+            status_code=400,
+            detail="Manual editing already completed. Campaign is finalized."
+        )
+    
+    # Enqueue export job
+    job = worker_config.enqueue_manual_edit_export_job(
+        campaign_id=str(campaign_id),
+        timeline_state=request.timeline_state.dict(),
+        export_settings=request.export_settings or {}
+    )
+    
+    # Estimate duration based on video length (rough estimate: 2-5 min for typical video)
+    estimated_duration = int(request.timeline_state.total_duration / 10)  # Rough estimate
+    if estimated_duration < 120:
+        estimated_duration = 120  # Minimum 2 minutes
+    elif estimated_duration > 300:
+        estimated_duration = 300  # Maximum 5 minutes
+    
+    return ExportEditResponse(
+        job_id=job.id,
+        estimated_duration_seconds=estimated_duration,
+        message="Manual edit export job enqueued"
+    )
 

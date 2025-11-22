@@ -9,7 +9,7 @@ import type { ToastProps } from '@/components/ui/Toast'
 import { useProjects } from '@/hooks/useProjects'
 import { useCampaigns } from '@/hooks/useCampaigns'
 import { api } from '@/services/api'
-import { ArrowLeft, Download, Sparkles, Trash2, Cloud, HardDrive, CheckCircle2, Play, Loader2, Shuffle } from 'lucide-react'
+import { ArrowLeft, Download, Sparkles, Trash2, Cloud, HardDrive, CheckCircle2, Play, Loader2, Shuffle, Edit } from 'lucide-react'
 import {
   getVideoURL,
   getVideo,
@@ -809,6 +809,18 @@ export const VideoResults = () => {
                       </Button>
                     )}
                     
+                    {/* Manual Edit Button - Only show for campaigns if not finalized */}
+                    {isCampaign && !project?.manual_editing_done && (
+                      <Button
+                        variant="outline"
+                        onClick={() => navigate(`/campaigns/${id}/edit`)}
+                        className="gap-2 border-gold/30 text-gold hover:bg-gold/10 hover:border-gold"
+                      >
+                        <Edit className="w-4 h-4" />
+                        Manual Edit
+                      </Button>
+                    )}
+                    
                     <Button
                       variant="hero"
                       onClick={() => handleDownload(aspect)}
@@ -898,8 +910,8 @@ export const VideoResults = () => {
             </motion.div>
           </div>
 
-          {/* RIGHT COLUMN: Scene Sidebar */}
-          {isCampaign && (
+          {/* RIGHT COLUMN: Scene Sidebar - Only show if manual editing not done */}
+          {isCampaign && !project?.manual_editing_done && (
             <div className="lg:col-span-4 flex flex-col h-full">
               <SceneSidebar
                 campaignId={id}
@@ -909,6 +921,24 @@ export const VideoResults = () => {
                 onEditError={handleEditError}
                 className="h-full"
               />
+            </div>
+          )}
+          
+          {/* Show message if manual editing is done */}
+          {isCampaign && project?.manual_editing_done && (
+            <div className="lg:col-span-4 flex flex-col h-full items-center justify-center p-8">
+              <div className="text-center">
+                <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-white mb-2">
+                  Manual Editing Complete
+                </h3>
+                <p className="text-gray-400 text-sm mb-4">
+                  This campaign has been finalized. Only the final video is available.
+                </p>
+                <p className="text-xs text-gray-500">
+                  Draft files have been removed. No further editing is possible.
+                </p>
+              </div>
             </div>
           )}
         </div>

@@ -20,7 +20,7 @@ from rq.job import Job, JobStatus
 
 from app.config import settings
 from app.jobs.generation_pipeline import generate_video
-from app.jobs.edit_pipeline import edit_scene_job
+from app.jobs.edit_pipeline import edit_scene_job, export_manual_edit_job
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +103,32 @@ class WorkerConfig:
             return job
         except Exception as e:
             logger.error(f"❌ Failed to enqueue edit job: {e}")
+            raise
+    
+    def enqueue_manual_edit_export_job(self, campaign_id: str, timeline_state: dict, export_settings: dict) -> Job:
+        """
+        Enqueue a manual edit export job.
+        
+        Args:
+            campaign_id: UUID string of campaign
+            timeline_state: Timeline state dict with video/audio clips
+            export_settings: Export settings dict
+            
+        Returns:
+            RQ Job object
+        """
+        try:
+            job = self.queue.enqueue(
+                export_manual_edit_job,
+                args=(campaign_id, timeline_state, export_settings),
+                job_timeout="30m",  # 30 minutes timeout for export jobs
+                result_ttl=86400,  # Keep results for 24 hours
+                failure_ttl=604800,  # Keep failures for 7 days
+            )
+            logger.info(f"✅ Enqueued manual edit export job {job.id} for campaign {campaign_id}")
+            return job
+        except Exception as e:
+            logger.error(f"❌ Failed to enqueue manual edit export job: {e}")
             raise
 
     def get_job_status(self, job_id: str) -> dict:

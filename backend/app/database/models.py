@@ -137,6 +137,7 @@ class Campaign(Base):
     error_message = Column(Text, nullable=True)
     campaign_json = Column(JSONB, nullable=False)
     edit_history = Column(JSONB, nullable=True)  # Phase 3: Edit history tracking
+    manual_editing_done = Column(Boolean, default=False, nullable=False)  # Phase 4: Manual editing finalization flag
     created_at = Column(DateTime(timezone=True), default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now(), nullable=False)
     

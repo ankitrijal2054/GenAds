@@ -14,6 +14,7 @@ import { CreateProject } from './pages/CreateProject'
 import { GenerationProgress } from './pages/GenerationProgress'
 import { VideoResults } from './pages/VideoResults'
 import { VideoSelection } from './pages/VideoSelection'
+import { ManualEditing } from './pages/ManualEditing'
 
 function App() {
   return (
@@ -93,6 +94,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <VideoResults />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/campaigns/:campaignId/edit"
+            element={
+              <ProtectedRoute>
+                <ManualEditing />
               </ProtectedRoute>
             }
           />

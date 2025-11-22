@@ -20,6 +20,7 @@ export interface Campaign {
   cost: number
   error_message?: string | null
   campaign_json: Record<string, any>
+  manual_editing_done?: boolean
   created_at: string
   updated_at: string
 }
