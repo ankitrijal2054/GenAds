@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     replicate_api_token: Optional[str] = None
     openai_api_key: Optional[str] = None
     
+    # Video Generation Model
+    # Options: "veo-3.1" (Google Veo 3.1) or "seedance-1-pro" (ByteDance SeedAnce-1-Pro)
+    video_model: str = os.getenv("VIDEO_MODEL", "seedance-1-pro")
+    
     # AWS S3
     aws_access_key_id: Optional[str] = None
     aws_secret_access_key: Optional[str] = None

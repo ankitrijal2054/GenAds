@@ -675,38 +675,62 @@ BRAND GUIDELINES (extracted from guidelines document):
 
     @timed_step("Video Generation")
     async def _generate_scene_videos(
-        self, campaign: Any, ad_project: AdProject, progress_start: int = 25
+        self, 
+        campaign: Any, 
+        ad_project: AdProject, 
+        progress_start: int = 25,
+        product_url: Optional[str] = None,
+        has_product: bool = False,
     ) -> List[str]:
-        """Generate background videos for all scenes in parallel."""
+        """
+        Generate background videos for all scenes in parallel.
+        
+        VEO 3.1 READY: Passes product/logo images as reference images when use_product/use_logo is True.
+        """
         try:
             update_campaign(
                 self.db, self.campaign_id, status="processing", progress=progress_start
             )
 
             from app.config import settings
-            generator = VideoGenerator(api_token=settings.replicate_api_token)
+            generator = VideoGenerator(
+                api_token=settings.replicate_api_token,
+                model=getattr(settings, 'video_model', 'seedance-1-pro')
+            )
 
             # Get the chosen style for all scenes (from campaign)
             chosen_style = campaign.selected_style
             logger.info(f"Using chosen style for ALL scenes: {chosen_style}")
             
+            # Get logo URL from brand if available
+            logo_url = self.brand.brand_logo_url if self.brand and self.brand.brand_logo_url else None
+            has_logo = logo_url is not None
+            
             # Generate TikTok vertical videos (9:16 hardcoded)
             logger.info("Generating TikTok vertical videos (9:16)")
+            logger.info(f"📦 Assets available - Product: {has_product} ({product_url[:80] if product_url else 'N/A'}...), Logo: {has_logo}")
 
-            # LOG: Show scene scripts that will be sent to video generator
+            # LOG: Show scene scripts and reference image usage
             logger.info(f"📝 Scene scripts to send to video generator ({len(ad_project.scenes)} scenes):")
             for i, scene in enumerate(ad_project.scenes):
-                logger.info(f"   Scene {i+1} script: {scene.background_prompt}")
+                product_info = f" [PRODUCT: {scene.use_product}]" if has_product else ""
+                logo_info = f" [LOGO: {scene.use_logo}]" if has_logo else ""
+                logger.info(f"   Scene {i+1} ({scene.role}){product_info}{logo_info}: {scene.background_prompt}")
             
             tasks = []
             for i, scene in enumerate(ad_project.scenes):
                 try:
+                    # VEO 3.1 READY: Pass product/logo images as reference when use_product/use_logo is True
                     task = generator.generate_scene_background(
                         prompt=scene.background_prompt,
                         style_spec_dict=ad_project.style_spec.dict() if hasattr(ad_project.style_spec, 'dict') else (ad_project.style_spec if isinstance(ad_project.style_spec, dict) else {}),
                         duration=scene.duration,
                         extracted_style=None,  # Reference image removed in Phase 2
                         style_override=scene.style or chosen_style,
+                        product_image_url=product_url if (scene.use_product and has_product) else None,
+                        logo_image_url=logo_url if (scene.use_logo and has_logo) else None,
+                        use_product=scene.use_product and has_product,
+                        use_logo=scene.use_logo and has_logo,
                     )
                     tasks.append(task)
                 except Exception as e:
@@ -1258,10 +1282,14 @@ BRAND GUIDELINES (extracted from guidelines document):
             # VEO S3 MIGRATION: Simplified 5-step pipeline (removed compositor + text overlay)
             # Product and text now integrated by Veo S3 during video generation
             
-            # STEP 1: Generate Videos (Veo S3 integrates product + text natively)
+            # STEP 1: Generate Videos (Veo 3.1 integrates product + text natively)
             video_start = progress_start + (var_idx * 5)
             replicate_videos = await self._generate_scene_videos(
-                campaign, variation_ad_project, progress_start=video_start
+                campaign, 
+                variation_ad_project, 
+                progress_start=video_start,
+                product_url=product_url,
+                has_product=has_product,
             )
             
             # Upload scene videos to S3 (Draft)

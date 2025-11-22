@@ -243,14 +243,14 @@ class ProductExtractor:
 
     async def extract_perfume_for_campaign(self, campaign: Any, perfume: Any) -> str:
         """
-        Extract perfume product from front image for a campaign.
+        Extract perfume product from front image for a campaign and upload to S3.
         
         Args:
-            campaign: Campaign database object
+            campaign: Campaign database object (has brand_id, perfume_id, campaign_id)
             perfume: Perfume database object
             
         Returns:
-            Local file path of extracted product PNG with transparent background
+            Public S3 URL of extracted product PNG with transparent background
         """
         # Use front image (required) for extraction
         front_image_url = self.get_perfume_image(perfume, "front")
@@ -260,11 +260,75 @@ class ProductExtractor:
         
         logger.info(f"Extracting perfume product from front image: {front_image_url}")
         
-        # Extract product using existing method
-        product_url = await self.extract_product(
+        # Extract product to local filesystem first
+        local_path = await self.extract_product(
             image_url=front_image_url,
             project_id=str(campaign.campaign_id),  # LocalStorageManager uses project_id naming
         )
         
-        return product_url
+        # Upload extracted product to S3 and return public S3 URL
+        s3_url = await self._upload_extracted_product_to_s3(
+            local_path=local_path,
+            brand_id=str(campaign.brand_id),
+            perfume_id=str(campaign.perfume_id),
+            campaign_id=str(campaign.campaign_id),
+        )
+        
+        logger.info(f"✅ Product extracted and uploaded to S3: {s3_url}")
+        return s3_url
+    
+    async def _upload_extracted_product_to_s3(
+        self,
+        local_path: str,
+        brand_id: str,
+        perfume_id: str,
+        campaign_id: str,
+    ) -> str:
+        """
+        Upload extracted product image to S3 and return public URL.
+        
+        Args:
+            local_path: Local file path of extracted product PNG
+            brand_id: Brand UUID
+            perfume_id: Perfume UUID
+            campaign_id: Campaign UUID
+            
+        Returns:
+            Public S3 URL of uploaded product image
+        """
+        try:
+            import os
+            from pathlib import Path
+            
+            # Read local file
+            with open(local_path, 'rb') as f:
+                file_content = f.read()
+            
+            # Generate S3 key: brands/{brand_id}/perfumes/{perfume_id}/campaigns/{campaign_id}/draft/product/extracted.png
+            s3_key = f"brands/{brand_id}/perfumes/{perfume_id}/campaigns/{campaign_id}/draft/product/extracted.png"
+            
+            logger.info(f"📤 Uploading extracted product to S3: s3://{self.s3_bucket_name}/{s3_key} ({len(file_content)} bytes)")
+            
+            # Upload to S3 (bucket policy handles public access)
+            # Note: ACL is not supported if bucket uses "Bucket owner enforced" Object Ownership
+            # Public access is controlled by bucket policy instead
+            self.s3_client.put_object(
+                Bucket=self.s3_bucket_name,
+                Key=s3_key,
+                Body=file_content,
+                ContentType="image/png",
+                # ACL removed - bucket policy handles public access
+            )
+            
+            # Generate public URL
+            s3_url = f"https://{self.s3_bucket_name}.s3.{self.aws_region}.amazonaws.com/{s3_key}"
+            
+            logger.info(f"✅ Uploaded extracted product to S3: {s3_url}")
+            return s3_url
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to upload extracted product to S3: {e}", exc_info=True)
+            # Fallback to local path if S3 upload fails
+            logger.warning(f"⚠️ Falling back to local path: {local_path}")
+            return local_path
 

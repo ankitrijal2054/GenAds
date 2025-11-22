@@ -1,11 +1,8 @@
 """Video Generator Service - Scene background video generation.
 
-VEO S3 MIGRATION READY (November 2025):
-This service is prepared for Google Veo S3 image-to-video model migration.
-Currently uses ByteDance SeedAnce-1-Pro as temporary solution.
-
-CURRENT: ByteDance SeedAnce-1-Pro (text-to-video)
-FUTURE: Google Veo S3 (image-to-video with product/text integration)
+SUPPORTS MULTIPLE MODELS (November 2025):
+- Google Veo 3.1 (image-to-video with reference image support) - DEFAULT
+- ByteDance SeedAnce-1-Pro (text-to-video) - FALLBACK
 
 Uses HTTP API directly for:
 - Better compatibility (works with all Python versions)
@@ -13,14 +10,15 @@ Uses HTTP API directly for:
 - Simpler error handling
 - Direct control over parameters
 
-Model: bytedance/seedance-1-pro (high-quality production model)
-Optimized for: Professional ad video generation
+Model Selection:
+- Set VIDEO_MODEL env var to "veo-3.1" or "seedance-1-pro"
+- Default: "veo-3.1"
 
-VEO S3 READINESS:
+VEO 3.1 FEATURES:
+- Reference image support (product/logo integration)
 - Enhanced prompts from ScenePlanner (user-first + cinematography)
 - Support for style overrides
-- Prepared for image reference inputs (product/logo)
-- Text integration instructions ready
+- Natural product/text integration
 """
 
 import logging
@@ -30,6 +28,7 @@ import requests
 import asyncio
 from typing import Optional, Dict, Any, List
 from dotenv import load_dotenv
+from app.config import settings
 from app.services.style_manager import StyleManager
 
 logger = logging.getLogger(__name__)
@@ -39,25 +38,28 @@ load_dotenv()
 
 # Replicate API configuration
 REPLICATE_API_TOKEN = os.environ.get("REPLICATE_API_TOKEN")
-REPLICATE_API_URL = "https://api.replicate.com/v1/models/bytedance/seedance-1-pro/predictions"
+
+# Model URLs
+VEO_31_API_URL = "https://api.replicate.com/v1/models/google/veo-3.1/predictions"
+SEEDANCE_API_URL = "https://api.replicate.com/v1/models/bytedance/seedance-1-pro/predictions"
 
 
 class VideoGenerator:
-    """Generates background videos using ByteDance SeedAnce-1-Pro text-to-video model.
+    """Generates background videos using Veo 3.1 or SeedAnce-1-Pro models.
     
-    Uses HTTP API directly (no SDK) for:
-    - Better Python 3.14+ compatibility
-    - No Pydantic v1 conflicts
-    - Simpler, more direct control
+    Supports model switching via VIDEO_MODEL config:
+    - "veo-3.1" (default): Google Veo 3.1 with reference image support
+    - "seedance-1-pro": ByteDance SeedAnce-1-Pro (text-to-video only)
     
-    This is a professional-grade model optimized for high-quality ad video generation.
+    Uses HTTP API directly (no SDK) for better compatibility and control.
     """
 
-    def __init__(self, api_token: Optional[str] = None):
-        """Initialize with Replicate API token.
+    def __init__(self, api_token: Optional[str] = None, model: Optional[str] = None):
+        """Initialize with Replicate API token and model selection.
         
         Args:
             api_token: Replicate API token. If None, uses REPLICATE_API_TOKEN env var.
+            model: Model to use ("veo-3.1" or "seedance-1-pro"). If None, uses VIDEO_MODEL config.
         """
         self.api_token = api_token or REPLICATE_API_TOKEN
         if not self.api_token:
@@ -65,6 +67,20 @@ class VideoGenerator:
                 "Replicate API token not provided. "
                 "Set REPLICATE_API_TOKEN environment variable or pass api_token parameter."
             )
+        
+        # Get model from config or parameter
+        self.model = model or getattr(settings, 'video_model', 'seedance-1-pro')
+        if self.model not in ['veo-3.1', 'seedance-1-pro']:
+            logger.warning(f"Unknown model '{self.model}', defaulting to 'seedance-1-pro'")
+            self.model = 'seedance-1-pro'
+        
+        # Set API URL based on model
+        if self.model == 'veo-3.1':
+            self.api_url = VEO_31_API_URL
+        else:
+            self.api_url = SEEDANCE_API_URL
+        
+        logger.info(f"🎬 VideoGenerator initialized with model: {self.model}")
 
     async def generate_scene_background(
         self,
@@ -74,61 +90,116 @@ class VideoGenerator:
         seed: Optional[int] = None,
         extracted_style: Optional[dict] = None,
         style_override: Optional[str] = None,
+        product_image_url: Optional[str] = None,
+        logo_image_url: Optional[str] = None,
+        use_product: bool = False,
+        use_logo: bool = False,
     ) -> str:
         """
         Generate background video for a scene via HTTP API (TikTok vertical 9:16).
         
-        VEO S3 MIGRATION READY:
-        This method receives enhanced prompts from ScenePlanner with:
-        - User-first creative concepts
-        - Advanced cinematography vocabulary
-        - Perfume visual language applied to user's vision
-        - Ready for Veo S3 image-to-video integration
+        VEO 3.1 READY:
+        This method is prepared for Veo 3.1 image-to-video model which accepts reference images.
+        Currently uses ByteDance SeedAnce-1-Pro as temporary solution.
+        
+        When Veo 3.1 is integrated:
+        - product_image_url will be passed to Veo 3.1 as reference image when use_product=True
+        - logo_image_url will be passed to Veo 3.1 as reference image when use_logo=True
+        - Veo 3.1 will integrate these images naturally into the generated video
 
         Args:
-            prompt: Enhanced scene description prompt (from ScenePlanner with Veo S3 optimizations)
+            prompt: Enhanced scene description prompt (from ScenePlanner with Veo 3.1 optimizations)
             style_spec_dict: Style specification dict with visual guidelines
             duration: Video duration in seconds (typical: 2-5 seconds)
             seed: Random seed for reproducibility (optional, not used by SeedAnce)
             extracted_style: Optional extracted style from reference image
             style_override: Override style selection (one of the 3 perfume styles)
+            product_image_url: URL of product image (for Veo 3.1 reference image integration)
+            logo_image_url: URL of logo image (for Veo 3.1 reference image integration)
+            use_product: Whether to use product image as reference (Veo 3.1 will integrate it)
+            use_logo: Whether to use logo image as reference (Veo 3.1 will integrate it)
 
         Returns:
             URL of generated video from Replicate
             
-        Future Veo S3 Integration:
-            - Will accept product_image_url for natural integration
+        Current Implementation:
+            - ByteDance SeedAnce-1-Pro (text-to-video only, reference images ignored)
+            
+        Future Veo 3.1 Integration:
+            - Will accept product_image_url for natural product integration
             - Will accept logo_image_url for brand moments
-            - Will accept text_instructions for embedded text generation
+            - Will enhance prompt based on reference images
         """
-        logger.info(f"Generating TikTok vertical background video: {prompt[:60]}...")
+        logger.info(f"Generating TikTok vertical background video with {self.model}: {prompt[:60]}...")
+        if use_product and product_image_url:
+            logger.info(f"📦 Product image available for {self.model} integration: {product_image_url[:80]}...")
+        if use_logo and logo_image_url:
+            logger.info(f"🏷️ Logo image available for {self.model} integration: {logo_image_url[:80]}...")
 
         try:
-            # Apply chosen style to prompt if style_override provided
-            if style_override:
-                logger.info(f"Applying style override: {style_override}")
-                enhanced_prompt = self._enhance_prompt_with_style(prompt, style_spec_dict, extracted_style, style_override)
+            # Enhance prompt with style and reference image context
+            if self.model == 'veo-3.1':
+                # Veo 3.1: Pass reference images directly, minimal prompt enhancement
+                enhanced_prompt = self._enhance_prompt_with_style(
+                    prompt=prompt,
+                    style_spec_dict=style_spec_dict,
+                    extracted_style=extracted_style,
+                    style_override=style_override,
+                )
             else:
-                enhanced_prompt = self._enhance_prompt_with_style(prompt, style_spec_dict, extracted_style)
+                # SeedAnce: Enhance prompt with product/logo descriptions (no reference image support)
+                enhanced_prompt = self._enhance_prompt_for_veo31(
+                    prompt=prompt,
+                    style_spec_dict=style_spec_dict,
+                    extracted_style=extracted_style,
+                    style_override=style_override,
+                    use_product=use_product,
+                    use_logo=use_logo,
+                    product_image_url=product_image_url,
+                    logo_image_url=logo_image_url,
+                )
 
             # Create prediction via HTTP API (hardcoded 9:16 for TikTok vertical)
-            prediction_data = await self._create_prediction(enhanced_prompt, int(duration), "9:16")
+            prediction_data = await self._create_prediction(
+                enhanced_prompt, 
+                int(duration), 
+                "9:16",
+                product_image_url=product_image_url if use_product else None,
+                logo_image_url=logo_image_url if use_logo else None,
+            )
             
             # With "Prefer: wait", the prediction should already be complete
             status = prediction_data.get("status")
-            logger.debug(f"Prediction status: {status}")
+            logger.info(f"Prediction status: {status}")
+            
+            # Check if prediction failed immediately
+            if status == "failed":
+                error_msg = prediction_data.get("error") or "Unknown error"
+                error_detail = prediction_data.get("error") if isinstance(prediction_data.get("error"), dict) else {}
+                logger.error(f"❌ Prediction failed immediately: {error_msg}")
+                if error_detail:
+                    logger.error(f"Error details: {error_detail}")
+                raise RuntimeError(f"Prediction failed: {error_msg}")
             
             # Check if prediction is already complete (from "Prefer: wait")
             if status in ["succeeded", "completed"]:
                 result = prediction_data
-            else:
-                # Fallback: poll if not complete yet (shouldn't happen with "Prefer: wait")
+            elif status == "starting" or status == "processing":
+                # Fallback: poll if not complete yet (shouldn't happen with "Prefer: wait" but can happen)
                 prediction_id = prediction_data.get("id")
-                logger.warning(f"Prediction not complete, polling: {prediction_id}")
+                logger.warning(f"Prediction not complete (status: {status}), polling: {prediction_id}")
                 result = await self._poll_prediction(prediction_id)
                 
                 if not result:
                     raise RuntimeError("Prediction failed or timed out")
+            else:
+                # Unknown status
+                error_msg = f"Unexpected prediction status: {status}"
+                logger.error(f"❌ {error_msg}")
+                error_detail = prediction_data.get("error") or prediction_data.get("logs") or {}
+                if error_detail:
+                    logger.error(f"Error details: {error_detail}")
+                raise RuntimeError(error_msg)
             
             # Extract video URL
             output = result.get("output")
@@ -204,37 +275,198 @@ class VideoGenerator:
         logger.info(f"📝 Enhanced script sent to video generator: {enhanced}")
         return enhanced
 
+    def _enhance_prompt_for_veo31(
+        self,
+        prompt: str,
+        style_spec_dict: dict,
+        extracted_style: Optional[dict] = None,
+        style_override: Optional[str] = None,
+        use_product: bool = False,
+        use_logo: bool = False,
+        product_image_url: Optional[str] = None,
+        logo_image_url: Optional[str] = None,
+    ) -> str:
+        """
+        Enhance prompt for Veo 3.1 with reference image context.
+        
+        When Veo 3.1 is fully integrated, this method will:
+        1. Pass product_image_url/logo_image_url directly to Veo 3.1 API
+        2. Enhance prompt to describe how product/logo should appear in the scene
+        
+        For now (ByteDance SeedAnce-1-Pro), we enhance the text prompt to describe product/logo presence.
+        
+        Args:
+            prompt: Original scene prompt
+            style_spec_dict: Style specification
+            extracted_style: Optional extracted style
+            style_override: Optional style override
+            use_product: Whether product should appear in scene
+            use_logo: Whether logo should appear in scene
+            product_image_url: URL of product image (for Veo 3.1)
+            logo_image_url: URL of logo image (for Veo 3.1)
+            
+        Returns:
+            Enhanced prompt with product/logo context
+        """
+        # First apply standard style enhancements
+        enhanced = self._enhance_prompt_with_style(prompt, style_spec_dict, extracted_style, style_override)
+        
+        # VEO 3.1 READY: Add reference image context to prompt
+        # When Veo 3.1 is integrated, these will be passed as actual reference images
+        reference_parts = []
+        
+        if use_product and product_image_url:
+            # Enhance prompt to describe product presence
+            # Veo 3.1 will use product_image_url as reference to integrate naturally
+            reference_parts.append("The luxury perfume bottle is naturally integrated into the scene as the hero element, appearing organically within the composition with proper lighting and depth.")
+            logger.debug("Added product integration context to prompt for Veo 3.1")
+        
+        if use_logo and logo_image_url:
+            # Enhance prompt to describe logo presence
+            # Veo 3.1 will use logo_image_url as reference for brand moments
+            reference_parts.append("The brand logo appears subtly integrated into the scene, complementing the composition without overwhelming it.")
+            logger.debug("Added logo integration context to prompt for Veo 3.1")
+        
+        if reference_parts:
+            reference_context = " ".join(reference_parts)
+            enhanced = f"{enhanced} {reference_context}"
+        
+        return enhanced
 
-    async def _create_prediction(self, prompt: str, duration: int, aspect_ratio: str = "9:16") -> dict:
-        """Create a prediction via HTTP API using seedance-1-pro model (TikTok vertical)."""
+
+    async def _create_prediction(
+        self, 
+        prompt: str, 
+        duration: int, 
+        aspect_ratio: str = "9:16",
+        product_image_url: Optional[str] = None,
+        logo_image_url: Optional[str] = None,
+    ) -> dict:
+        """
+        Create a prediction via HTTP API using Veo 3.1 or SeedAnce-1-Pro model.
+        
+        Args:
+            prompt: Text prompt for video generation
+            duration: Video duration in seconds
+            aspect_ratio: Video aspect ratio (9:16 for TikTok vertical)
+            product_image_url: URL of product image (for Veo 3.1 reference image integration)
+            logo_image_url: URL of logo image (for Veo 3.1 reference image integration)
+            
+        Returns:
+            Prediction data from API
+        """
         headers = {
             "Authorization": f"Bearer {self.api_token}",
             "Content-Type": "application/json",
             "Prefer": "wait"  # Wait for the result instead of polling
         }
         
-        payload = {
-            "input": {
-                "fps": 24,
-                "prompt": prompt,
-                "duration": min(duration, 8),  # Cap at 8s (max scene duration for optimal quality)
-                "resolution": "480p",  # 480p for faster generation, good quality
-                "aspect_ratio": "9:16",  # Hardcoded TikTok vertical
-                "camera_fixed": False
+        if self.model == 'veo-3.1':
+            # VEO 3.1 API Format
+            # Duration must be one of: 4, 6, 8
+            veo_duration = min(duration, 8)
+            if veo_duration <= 4:
+                veo_duration = 4
+            elif veo_duration <= 6:
+                veo_duration = 6
+            else:
+                veo_duration = 8
+            
+            payload = {
+                "input": {
+                    "prompt": prompt,
+                    "duration": veo_duration,  # Must be 4, 6, or 8
+                    "resolution": "1080p",  # Veo 3.1 supports 1080p
+                    "aspect_ratio": "9:16",  # Hardcoded TikTok vertical
+                    "generate_audio": False,  # We generate audio separately
+                }
             }
-        }
+            
+            # Add reference images for Veo 3.1
+            # Format: array of strings (valid HTTP/HTTPS URLs), not objects
+            reference_images = []
+            
+            def validate_and_add_url(url: str, url_type: str) -> bool:
+                """Validate URL format and add to reference_images if valid."""
+                if not url:
+                    return False
+                
+                # Ensure URL is a string
+                url_str = str(url).strip()
+                
+                # Check if URL is valid (starts with http:// or https://)
+                if not url_str.startswith(('http://', 'https://')):
+                    logger.warning(f"⚠️ Invalid {url_type} URL format (must start with http:// or https://): {url_str[:100]}...")
+                    return False
+                
+                # Log the URL being added
+                logger.info(f"📎 Adding {url_type} as reference: {url_str[:100]}...")
+                reference_images.append(url_str)
+                return True
+            
+            if product_image_url:
+                validate_and_add_url(product_image_url, "product image")
+            if logo_image_url:
+                validate_and_add_url(logo_image_url, "logo image")
+            
+            if reference_images:
+                payload["input"]["reference_images"] = reference_images
+                logger.info(f"🎬 Veo 3.1: Using {len(reference_images)} reference image(s) with duration {veo_duration}s")
+                # Log full URLs for debugging (truncate for privacy)
+                for i, url in enumerate(reference_images):
+                    logger.info(f"   Reference image {i+1}: {url[:150]}...")
+            else:
+                logger.warning("⚠️ No valid reference images to add (product/logo URLs were invalid or missing)")
+        else:
+            # SEEDANCE-1-PRO API Format (text-to-video only, no reference images)
+            payload = {
+                "input": {
+                    "fps": 24,
+                    "prompt": prompt,
+                    "duration": min(duration, 8),  # Cap at 8s (max scene duration for optimal quality)
+                    "resolution": "480p",  # 480p for faster generation, good quality
+                    "aspect_ratio": "9:16",  # Hardcoded TikTok vertical
+                    "camera_fixed": False
+                }
+            }
+            
+            if product_image_url or logo_image_url:
+                logger.warning(
+                    f"⚠️ SeedAnce-1-Pro doesn't support reference images. "
+                    f"Product/logo URLs will be ignored: product={product_image_url is not None}, logo={logo_image_url is not None}"
+                )
         
         try:
+            logger.info(f"🎬 Creating prediction with {self.model} at {self.api_url}")
+            # Log reference images if present (for debugging URI format issues)
+            if 'reference_images' in payload.get('input', {}):
+                logger.info(f"📎 Reference images being sent: {len(payload['input']['reference_images'])} URLs")
+                for i, url in enumerate(payload['input']['reference_images']):
+                    logger.info(f"   URL {i+1}: {url[:200]}...")  # Log first 200 chars
+            logger.debug(f"Full payload: {payload}")
             response = requests.post(
-                REPLICATE_API_URL,
+                self.api_url,
                 headers=headers,
                 json=payload,
-                timeout=120  # Increased timeout for "Prefer: wait"
+                timeout=180  # Increased timeout for Veo 3.1 (can take longer)
             )
             response.raise_for_status()
-            return response.json()
+            prediction_data = response.json()
+            logger.info(f"✅ Prediction created: {prediction_data.get('id', 'unknown')} - Status: {prediction_data.get('status', 'unknown')}")
+            return prediction_data
+        except requests.exceptions.HTTPError as e:
+            logger.error(f"❌ HTTP error creating prediction with {self.model}: {e}")
+            if hasattr(e, 'response') and e.response is not None:
+                try:
+                    error_data = e.response.json()
+                    logger.error(f"Error response: {error_data}")
+                except:
+                    logger.error(f"Error response (text): {e.response.text}")
+            raise
         except requests.exceptions.RequestException as e:
-            logger.error(f"Failed to create prediction: {e}")
+            logger.error(f"❌ Request error creating prediction with {self.model}: {e}")
+            if hasattr(e, 'response') and e.response is not None:
+                logger.error(f"Response: {e.response.text}")
             raise
 
     async def _poll_prediction(self, prediction_id: str, max_wait: int = 300) -> Optional[dict]:
@@ -271,7 +503,15 @@ class VideoGenerator:
                     logger.debug(f"  Succeeded ({elapsed:.0f}s)")
                     return prediction
                 elif status == "failed":
-                    logger.error(f"Prediction failed: {prediction.get('error')}")
+                    error_msg = prediction.get('error')
+                    if isinstance(error_msg, dict):
+                        error_detail = error_msg.get('detail') or error_msg.get('message') or str(error_msg)
+                    else:
+                        error_detail = error_msg or "Unknown error"
+                    logger.error(f"❌ Prediction failed during polling: {error_detail}")
+                    # Log full error details if available
+                    if isinstance(error_msg, dict):
+                        logger.error(f"Full error details: {error_msg}")
                     return None
                 else:
                     logger.debug(f"  Status: {status}")
@@ -288,9 +528,14 @@ class VideoGenerator:
         durations: list,
         extracted_style: Optional[dict] = None,
         style_override: Optional[str] = None,
+        scenes_data: Optional[List[Dict[str, Any]]] = None,
+        product_image_url: Optional[str] = None,
+        logo_image_url: Optional[str] = None,
     ) -> list:
         """
         Generate multiple scene videos concurrently (TikTok vertical 9:16).
+        
+        VEO 3.1 READY: Supports passing product/logo images as reference images.
 
         Args:
             prompts: List of scene prompts
@@ -298,6 +543,9 @@ class VideoGenerator:
             durations: Duration for each scene
             extracted_style: Optional extracted style from reference image
             style_override: Override style selection
+            scenes_data: Optional list of scene dictionaries with use_product/use_logo flags
+            product_image_url: URL of product image (for Veo 3.1)
+            logo_image_url: URL of logo image (for Veo 3.1)
 
         Returns:
             List of video URLs
@@ -306,17 +554,28 @@ class VideoGenerator:
 
         try:
             # Generate all scenes concurrently (all 9:16)
-
-            tasks = [
-                self.generate_scene_background(
-                prompt=prompts[i],
-                style_spec_dict=style_spec_dict,
-                duration=durations[i],
-                extracted_style=extracted_style,
-                style_override=style_override,
+            # VEO 3.1 READY: Pass product/logo images based on scene flags
+            tasks = []
+            for i in range(len(prompts)):
+                # Extract use_product/use_logo from scenes_data if available
+                use_product = False
+                use_logo = False
+                if scenes_data and i < len(scenes_data):
+                    use_product = scenes_data[i].get("use_product", False)
+                    use_logo = scenes_data[i].get("use_logo", False)
+                
+                task = self.generate_scene_background(
+                    prompt=prompts[i],
+                    style_spec_dict=style_spec_dict,
+                    duration=durations[i],
+                    extracted_style=extracted_style,
+                    style_override=style_override,
+                    product_image_url=product_image_url if use_product else None,
+                    logo_image_url=logo_image_url if use_logo else None,
+                    use_product=use_product,
+                    use_logo=use_logo,
                 )
-                for i in range(len(prompts))
-            ]
+                tasks.append(task)
 
             videos = await asyncio.gather(*tasks, return_exceptions=True)
 

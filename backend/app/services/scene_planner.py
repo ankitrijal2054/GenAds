@@ -177,20 +177,22 @@ class ScenePlanner:
 
         forced_background_type = style_to_background.get(chosen_style, "cinematic")
 
-        for scene_dict in scenes_json:
+        for i, scene_dict in enumerate(scenes_json):
             role = scene_dict.get("role")
 
             # 3) Enforce unified background_type
             scene_dict["background_type"] = forced_background_type
 
-            # 4) Limit product usage — only hook & showcase
-            if role not in ["hook", "showcase"]:
+            # 4) Limit product usage — hook, showcase, or last scene (CTA)
+            # Last scene always needs product for smooth ending
+            is_last_scene = (i == len(scenes_json) - 1)
+            if role not in ["hook", "showcase"] and not is_last_scene:
                 scene_dict["use_product"] = False
                 scene_dict["product_position"] = None
                 scene_dict["product_scale"] = None
 
-            # 4) Limit logo usage — only hook & CTA
-            if role not in ["hook", "cta"]:
+            # 4) Limit logo usage — hook, CTA, or last scene
+            if role not in ["hook", "cta"] and not is_last_scene:
                 scene_dict["use_logo"] = False
                 scene_dict["logo_position"] = None
                 scene_dict["logo_scale"] = None
@@ -200,10 +202,32 @@ class ScenePlanner:
                 if "overlay" in scene_dict:
                     scene_dict["overlay"]["text"] = ""
 
-        # 6) Ensure last scene ends smoothly (CTA)
+        # 6) CRITICAL: Ensure last scene ends smoothly (CTA) with product + text
         last_scene = scenes_json[-1]
-        last_scene["transition_to_next"] = "fade"
-        last_scene["camera_movement"] = "slow_zoom_out"
+        last_scene["transition_to_next"] = "fade"  # Smooth ending, not cut-off
+        last_scene["camera_movement"] = "slow_zoom_out"  # Feels like conclusion
+        last_scene["use_product"] = True  # MANDATORY - last scene always shows product
+        last_scene["product_position"] = last_scene.get("product_position", "center")
+        last_scene["product_scale"] = last_scene.get("product_scale", 0.5)
+        
+        # Ensure last scene has text overlay with perfume + brand name
+        if "overlay" not in last_scene:
+            last_scene["overlay"] = {}
+        if not last_scene["overlay"].get("text") or last_scene["overlay"]["text"].strip() == "":
+            # Extract perfume_name and brand_name from context - will be set by LLM but ensure fallback
+            perfume_name_str = perfume_name or brand_name
+            brand_name_str = brand_name
+            last_scene["overlay"]["text"] = f"{perfume_name_str}\n{brand_name_str}" if perfume_name_str != brand_name_str else perfume_name_str
+            last_scene["overlay"]["position"] = last_scene["overlay"].get("position", "bottom")
+            last_scene["overlay"]["duration"] = last_scene["overlay"].get("duration", 3.0)
+            last_scene["overlay"]["font_size"] = last_scene["overlay"].get("font_size", 48)
+            last_scene["overlay"]["color"] = last_scene["overlay"].get("color", brand_colors[0] if brand_colors else "#FFFFFF")
+            last_scene["overlay"]["animation"] = last_scene["overlay"].get("animation", "fade_in")
+        
+        # Refine last scene prompt to emphasize smooth ending
+        original_last_prompt = last_scene.get("background_prompt", "")
+        if "conclusion" not in original_last_prompt.lower() and "complete" not in original_last_prompt.lower():
+            last_scene["background_prompt"] = f"{original_last_prompt} This final moment should feel like a natural conclusion to the story, with smooth camera movement and elegant resolution, not an abrupt ending."
 
         # STEP 4: Generate style specification (with derived tone)
         if extracted_style:
@@ -729,17 +753,30 @@ This is a UNISEX perfume. Apply these visual characteristics:
 - **Atmosphere**: Contemporary luxury, inclusive elegance, modern sophistication
 """
         
-        # Build VEO S3 perfume-specific prompt with USER-FIRST philosophy
-        prompt = f"""You are a world-class PERFUME COMMERCIAL DIRECTOR working with Google's Veo S3 model.
+        # Build VEO S3 perfume-specific prompt with USER-FIRST philosophy + STORYTELLING FLOW
+        prompt = f"""You are a world-class PERFUME COMMERCIAL DIRECTOR working with Google's Veo 3.1 model.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎯 YOUR MISSION: Bring the user's creative vision to life with stunning execution
+🎯 YOUR MISSION: Create a FLOWING NARRATIVE that tells a complete story
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 PRIORITY HIERARCHY (CRITICAL):
 1. USER'S CREATIVE PROMPT (PRIMARY) - The story, concept, emotion they want
-2. PERFUME VISUAL LANGUAGE (SECONDARY) - The cinematography style and execution quality
-3. VEO S3 TECHNICAL CAPABILITIES (TOOLS) - How to achieve the vision
+2. NARRATIVE FLOW & STORYTELLING (CRITICAL) - All scenes must connect as one cohesive story
+3. PERFUME VISUAL LANGUAGE (SECONDARY) - The cinematography style and execution quality
+4. VEO S3 TECHNICAL CAPABILITIES (TOOLS) - How to achieve the vision
+
+🚨 STORYTELLING REQUIREMENTS (CRITICAL):
+1. ALL SCENES MUST FLOW TOGETHER - Each scene should build on the previous one
+2. Create visual continuity - Use similar lighting, color palette, and movement patterns across scenes
+3. Each scene should advance the narrative - Not random shots, but a progressing story
+4. Transitions should feel intentional - Match camera movement and composition between scenes
+5. LAST SCENE MUST END SMOOTHLY:
+   - ALWAYS include the product image (use_product: true)
+   - ALWAYS include text overlay with perfume name + brand name
+   - Use slow_zoom_out camera movement
+   - Use "fade" transition (final scene resolution, not cut-off)
+   - Create a sense of completion, not abrupt ending
 
 🚨 GOLDEN RULE:
 If user prompt says "underwater scene with dolphins", you create that underwater scene 
@@ -760,7 +797,7 @@ Perfume: {perfume_name}
 {gender_guidance}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎬 VEO S3 ADVANCED CINEMATOGRAPHY CAPABILITIES
+🎬 VEO 3.1 ADVANCED CINEMATOGRAPHY CAPABILITIES
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 CAMERA MOVEMENTS:
@@ -802,7 +839,7 @@ COMMON PERFUME AD ELEMENTS (Adapt to User's Concept):
 - If user wants "abstract light" → create abstract light with elegant production
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📋 TECHNICAL REQUIREMENTS
+📋 TECHNICAL REQUIREMENTS + VEO 3.1 REFERENCE IMAGE SUPPORT
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Platform: TikTok Vertical (9:16, 1080×1920)
 Style: {chosen_style}
@@ -811,13 +848,40 @@ Scene Count: {scene_count} scenes
 Max Scene Duration: 8 seconds (CRITICAL - each scene MUST be ≤8s)
 {f"Gender: {perfume_gender.upper()}" if perfume_gender else ""}
 
+VEO 3.1 REFERENCE IMAGE INTEGRATION:
+- Veo 3.1 can accept product image as reference to integrate naturally into the scene
+- Set use_product=true when the scene story/narrative calls for showing the product
+- Set use_logo=true when brand presence enhances the scene story
+- Base these decisions on NARRATIVE NEED, not arbitrary rules
+- Examples of good product usage:
+  * Opening hook to establish product presence
+  * Mid-story moments that showcase product features/details
+  * Final resolution that completes the narrative with product + brand name
+
 MANDATORY STRUCTURE:
 1. FIRST scene: {flow_rules.get('first_scene_must_be', ['macro_bottle', 'atmospheric'])} shot type
-2. LAST scene: {flow_rules.get('last_scene_must_be', ['brand_moment'])} shot type
-3. Product appears in {flow_rules['product_visibility_rules']['minimum_product_scenes']}-{flow_rules['product_visibility_rules']['maximum_product_scenes']} scenes
-4. Final scene includes perfume name "{perfume_name}" + brand "{brand_name}"
+   - Should establish the story/atmosphere
+   - Can use product if it strengthens the opening
+2. MIDDLE scenes: Build narrative, create visual flow, advance story
+   - Use product when story naturally calls for it
+   - Ensure each scene connects visually and narratively to previous
+3. LAST scene: {flow_rules.get('last_scene_must_be', ['brand_moment'])} shot type
+   - MUST ALWAYS use product (use_product: true) - This is the resolution moment
+   - MUST ALWAYS include text overlay with "{perfume_name}" + "{brand_name}"
+   - MUST use slow_zoom_out camera movement (feels like conclusion)
+   - MUST use "fade" transition (smooth ending, not cut-off)
+   - Should feel like natural story completion, not abrupt ending
+4. Product appears in {flow_rules['product_visibility_rules']['minimum_product_scenes']}-{flow_rules['product_visibility_rules']['maximum_product_scenes']} scenes
+   - Base this on story needs, not rules
+   - Last scene ALWAYS counts as one of these
 5. Each scene duration: 3-8 seconds (NEVER exceed 8 seconds per scene)
 6. Total duration: ±{int(target_duration * 0.15)}s from {target_duration}s
+
+STORY FLOW REQUIREMENTS:
+- Scene transitions should feel like one continuous narrative
+- Visual elements (lighting, colors, mood) should evolve but remain connected
+- Camera movements should complement each other across scenes
+- The video should feel like ONE COMPLETE STORY, not separate clips
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🎯 YOUR WORKFLOW
@@ -849,14 +913,15 @@ Return ONLY valid JSON array with {scene_count} scene objects:
     "shot_variation": "extreme_closeup_cap",
     "role": "hook",
     "duration": 5,  # MUST be 3-8 seconds (max 8s)
-    "background_prompt": "Cinematic opening that brings USER'S CONCEPT to life with dolly-in camera, volumetric fog, rim lighting, bokeh, and {chosen_style} aesthetic. Describe USER'S vision enhanced with perfume commercial techniques.",
-    "use_product": true,
-    "product_position": "center",
-    "product_scale": 0.6,
+    "background_prompt": "Cinematic opening that brings USER'S CONCEPT to life with dolly-in camera, volumetric fog, rim lighting, bokeh, and {chosen_style} aesthetic. Describe USER'S vision enhanced with perfume commercial techniques. Create a sense of beginning and anticipation.",
+    "use_product": true,  # Set based on narrative need - does opening benefit from product?
+    "use_logo": false,  # Set based on narrative need
+    "product_position": "center",  # Required if use_product=true
+    "product_scale": 0.6,  # Required if use_product=true
     "camera_movement": "dolly_in",
-    "transition_to_next": "fade",
+    "transition_to_next": "fade",  # Should connect smoothly to next scene
     "overlay": {{
-      "text": "{perfume_name}",
+      "text": "",  # Only hook + CTA should have text typically
       "position": "bottom",
       "duration": 2.0,
       "font_size": 48,
@@ -864,14 +929,44 @@ Return ONLY valid JSON array with {scene_count} scene objects:
       "animation": "fade_in"
     }}
   }},
-  ...
+  ... (middle scenes that build the narrative) ...
+  {{
+    "scene_id": {scene_count - 1},
+    "shot_type": "brand_moment",
+    "shot_variation": "product_centered_minimal",
+    "role": "cta",
+    "duration": 6,  # MUST be 3-8 seconds (max 8s)
+    "background_prompt": "Elegant final moment that RESOLVES the story. Clean minimalist setting with the perfume bottle as the hero. Slow zoom out creates sense of completion. {chosen_style} aesthetic. This should feel like a natural conclusion to the narrative, not an abrupt cut-off.",
+    "use_product": true,  # MANDATORY for last scene - this is the resolution
+    "use_logo": true,  # Optional but recommended for brand presence
+    "product_position": "center",
+    "product_scale": 0.5,
+    "camera_movement": "slow_zoom_out",  # MANDATORY for last scene - feels like ending
+    "transition_to_next": "fade",  # MANDATORY for last scene - smooth completion
+    "overlay": {{
+      "text": "{perfume_name}\\n{brand_name}",  # MANDATORY for last scene
+      "position": "bottom",
+      "duration": 3.0,
+      "font_size": 48,
+      "color": "{brand_colors[0] if brand_colors else '#FFFFFF'}",
+      "animation": "fade_in"
+    }}
+  }}
 ]
 
-⚠️ REMEMBER:
+⚠️ CRITICAL REMINDERS:
 - shot_type must be one of: {', '.join(allowed_ids)}
 - User's creative vision = PRIMARY (honor their concept)
+- NARRATIVE FLOW = CRITICAL (all scenes must connect as one story)
 - Grammar = SECONDARY (inform execution style, not content)
-- Apply advanced cinematography to make it stunning
+- LAST SCENE MUST:
+  * use_product: true (always)
+  * Include text overlay with "{perfume_name}" + "{brand_name}"
+  * camera_movement: "slow_zoom_out"
+  * transition_to_next: "fade"
+  * Feel like natural completion, not cut-off
+- Set use_product/use_logo based on NARRATIVE NEED, not arbitrary rules
+- Ensure all scenes flow together as one cohesive story
 
 ✅ GENERATE NOW - BRING USER'S VISION TO LIFE!"""
         
@@ -885,7 +980,7 @@ Return ONLY valid JSON array with {scene_count} scene objects:
                         "role": "system",
                         "content": f"""You are a world-class perfume commercial director working with Veo S3.
 
-VEO S3 USER-FIRST PHILOSOPHY:
+VEO 3.1 USER-FIRST PHILOSOPHY:
 1. User's creative prompt = PRIMARY (honor their vision and concept)
 2. Perfume visual language = SECONDARY (inform HOW to execute, not WHAT to create)
 3. Grammar provides cinematography techniques, not content restrictions
