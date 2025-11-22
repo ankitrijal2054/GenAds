@@ -59,6 +59,8 @@ export const Timeline: React.FC = () => {
   const [zoomLevel, setZoomLevel] = useState(1)
   const [viewportWidth, setViewportWidth] = useState(TIMELINE_VIEWPORT_WIDTH)
   const [dragOverTrack, setDragOverTrack] = useState<'video' | 'audio' | null>(null)
+  const [playheadDragTime, setPlayheadDragTime] = useState<number | null>(null)
+  const playheadDragTimeRef = useRef<number | null>(null)
   
   // Update viewport width when container resizes
   useEffect(() => {
@@ -105,8 +107,9 @@ export const Timeline: React.FC = () => {
   const timeMarkerInterval = getTimeMarkerInterval(zoomLevel)
   const timeMarkers = generateTimeMarkers(totalDuration, timeMarkerInterval)
   
-  // Handle playhead area click to seek
+  // Handle playhead area click to seek (only if not dragging playhead)
   const handlePlayheadAreaClick = (e: React.MouseEvent<HTMLDivElement>): void => {
+    if (isDraggingPlayhead) return
     if (!scrollContainerRef.current) return
     const rect = scrollContainerRef.current.getBoundingClientRect()
     const clickX = e.clientX - rect.left + scrollContainerRef.current.scrollLeft
@@ -115,47 +118,95 @@ export const Timeline: React.FC = () => {
     timelinePlayback.seek(Math.max(0, Math.min(time, totalDuration)))
   }
   
-  // Handle playhead drag
+  // Handle playhead drag start
   const handlePlayheadMouseDown = (e: React.MouseEvent<HTMLDivElement>): void => {
     e.preventDefault()
     e.stopPropagation()
     setIsDraggingPlayhead(true)
+    // Pause playback when starting to drag
+    if (timelinePlayback.isPlaying) {
+      timelinePlayback.pause()
+    }
   }
   
   useEffect(() => {
-    if (!isDraggingPlayhead) return
+    if (!isDraggingPlayhead) {
+      setPlayheadDragTime(null)
+      playheadDragTimeRef.current = null
+      return
+    }
     
     const handleMouseMove = (e: MouseEvent): void => {
-      if (!scrollContainerRef.current) return
+      if (!scrollContainerRef.current || !playheadRef.current) return
+      
+      // Get current values from refs/state to ensure we have latest
       const rect = scrollContainerRef.current.getBoundingClientRect()
       const clientX = e.clientX
       
+      // Recalculate pixels per second based on current viewport and zoom
+      const currentViewportWidth = Math.max(scrollContainerRef.current.clientWidth - TRACK_HEADER_WIDTH, 100)
+      const currentBasePixelsPerSecond = currentViewportWidth / DEFAULT_VIEWPORT_DURATION
+      const currentPixelsPerSecond = currentBasePixelsPerSecond * zoomLevel
+      
+      // Calculate position relative to timeline
       let clickX: number
       if (clientX < rect.left) {
         clickX = 0
+        // Auto-scroll when near left edge
+        if (scrollContainerRef.current.scrollLeft > 0) {
+          scrollContainerRef.current.scrollLeft = Math.max(0, scrollContainerRef.current.scrollLeft - 10)
+        }
       } else if (clientX > rect.right) {
         clickX = scrollContainerRef.current.scrollWidth
+        // Auto-scroll when near right edge
+        const maxScroll = scrollContainerRef.current.scrollWidth - scrollContainerRef.current.clientWidth
+        if (scrollContainerRef.current.scrollLeft < maxScroll) {
+          scrollContainerRef.current.scrollLeft = Math.min(maxScroll, scrollContainerRef.current.scrollLeft + 10)
+        }
       } else {
         clickX = clientX - rect.left + scrollContainerRef.current.scrollLeft
       }
       
       const timeX = clickX - TRACK_HEADER_WIDTH
-      const time = Math.max(0, timeX / pixelsPerSecond)
-      timelinePlayback.seek(Math.max(0, Math.min(time, totalDuration)))
+      const calculatedTime = Math.max(0, Math.min(timeX / currentPixelsPerSecond, totalDuration))
+      
+      // Update ref immediately for position calculation
+      playheadDragTimeRef.current = calculatedTime
+      
+      // Update playhead position DIRECTLY in DOM for instant visual feedback
+      const playheadElement = playheadRef.current
+      if (playheadElement) {
+        const pixelPosition = TRACK_HEADER_WIDTH + calculatedTime * currentPixelsPerSecond
+        playheadElement.style.left = `${pixelPosition}px`
+      }
+      
+      // Update state for React (triggers re-render, but DOM is already updated)
+      setPlayheadDragTime(calculatedTime)
+      // Also update the playback time
+      timelinePlayback.seek(calculatedTime)
     }
     
     const handleMouseUp = (): void => {
       setIsDraggingPlayhead(false)
+      setPlayheadDragTime(null)
+      playheadDragTimeRef.current = null
     }
     
-    window.addEventListener('mousemove', handleMouseMove)
-    window.addEventListener('mouseup', handleMouseUp)
+    // Add cursor style to body during drag
+    document.body.style.cursor = 'ew-resize'
+    document.body.style.userSelect = 'none'
+    
+    // Use capture phase to ensure we catch all events - NO passive to allow preventDefault
+    window.addEventListener('mousemove', handleMouseMove, true)
+    window.addEventListener('mouseup', handleMouseUp, true)
     
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove)
-      window.removeEventListener('mouseup', handleMouseUp)
+      window.removeEventListener('mousemove', handleMouseMove, true)
+      window.removeEventListener('mouseup', handleMouseUp, true)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
     }
-  }, [isDraggingPlayhead, pixelsPerSecond, totalDuration, timelinePlayback])
+  }, [isDraggingPlayhead, zoomLevel, totalDuration, timelinePlayback])
   
   // Handle zoom
   const handleZoomIn = (): void => {
@@ -236,6 +287,24 @@ export const Timeline: React.FC = () => {
         effectiveDuration: item.duration
       }
 
+      // Get the clip source from the original library item
+      const store = useEditorStore.getState()
+      // Try to get source from clipSources map first, then fall back to URL properties
+      const clipSource = store.getClipSource(item.libraryId) || item.videoUrl || item.audioUrl
+      
+      // Set clip source for the new timeline clip BEFORE adding to track
+      if (clipSource) {
+        store.setClipSource(newClip.id, clipSource)
+        // Also ensure the clip's URL property is set
+        if (trackType === 'video') {
+          newClip.videoUrl = clipSource
+        } else {
+          newClip.audioUrl = clipSource
+        }
+      } else {
+        console.warn('No clip source found for dropped item:', item)
+      }
+
       // Add clip to track
       addClipToTrack(trackType, newClip)
     } catch (err) {
@@ -265,7 +334,12 @@ export const Timeline: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [selectedClipId, timelinePlayback.currentTime, timelineVideoClips, splitClip, removeClipFromTrack])
   
-  const playheadPixelPosition = TRACK_HEADER_WIDTH + timelinePlayback.currentTime * pixelsPerSecond
+  // Use drag time if dragging, otherwise use current playback time
+  // During drag, use ref for immediate updates; after drag, use state
+  const currentTime = playheadDragTime !== null 
+    ? playheadDragTime 
+    : timelinePlayback.currentTime
+  const playheadPixelPosition = TRACK_HEADER_WIDTH + currentTime * pixelsPerSecond
   
   return (
     <div className="flex flex-col h-full bg-gray-900 border-t border-gray-700">
@@ -313,9 +387,15 @@ export const Timeline: React.FC = () => {
       >
         {/* Header with Time Markers */}
         <div
-          className="sticky top-0 z-10 bg-gray-800 border-b border-gray-700"
+          className="sticky top-0 z-10 bg-gray-800 border-b border-gray-700 cursor-pointer"
           style={{ width: `${timelineWidth}px` }}
           onClick={handlePlayheadAreaClick}
+          onMouseDown={(e) => {
+            // Prevent dragging playhead when clicking header
+            if (isDraggingPlayhead) {
+              e.preventDefault()
+            }
+          }}
         >
           <div className="flex">
             <div style={{ width: `${TRACK_HEADER_WIDTH}px` }} className="border-r border-gray-700" />
@@ -337,25 +417,64 @@ export const Timeline: React.FC = () => {
         {/* Playhead */}
         <div
           ref={playheadRef}
-          className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-20 pointer-events-none"
+          className="absolute top-0 bottom-0 z-30 pointer-events-none"
           style={{
-            left: `${playheadPixelPosition}px`,
+            left: isDraggingPlayhead && playheadDragTimeRef.current !== null
+              ? `${TRACK_HEADER_WIDTH + playheadDragTimeRef.current * pixelsPerSecond}px`
+              : `${playheadPixelPosition}px`,
+            transition: isDraggingPlayhead ? 'none' : 'left 0.1s linear',
           }}
         >
+          {/* Playhead line */}
           <div
-            className="absolute top-0 left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-red-500"
-            onMouseDown={handlePlayheadMouseDown}
-            style={{ cursor: 'ew-resize', pointerEvents: 'all' }}
+            className={`absolute top-0 bottom-0 ${
+              isDraggingPlayhead ? 'bg-red-400 w-1 shadow-lg shadow-red-500/50' : 'bg-red-500 w-0.5'
+            }`}
+            style={{ 
+              left: '50%', 
+              transform: 'translateX(-50%)',
+              transition: isDraggingPlayhead ? 'none' : 'all 0.2s',
+            }}
           />
+          
+          {/* Playhead handle */}
+          <div
+            className={`absolute top-0 left-1/2 transform -translate-x-1/2 border-transparent border-t-red-500 cursor-ew-resize pointer-events-all ${
+              isDraggingPlayhead 
+                ? 'border-l-6 border-r-6 border-t-6 scale-110' 
+                : 'border-l-4 border-r-4 border-t-4 hover:border-l-5 hover:border-r-5 hover:border-t-5'
+            }`}
+            onMouseDown={handlePlayheadMouseDown}
+            style={{ 
+              cursor: isDraggingPlayhead ? 'ew-resize' : 'grab',
+              transition: isDraggingPlayhead ? 'none' : 'all 0.2s',
+            }}
+          />
+          
+          {/* Time tooltip when dragging */}
+          {isDraggingPlayhead && playheadDragTime !== null && (
+            <div
+              className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-red-500 text-white text-xs font-medium rounded shadow-lg whitespace-nowrap z-40"
+            >
+              {formatTime(playheadDragTime)}
+            </div>
+          )}
         </div>
         
         {/* Video Track */}
         <div 
-          className={`relative border-b border-gray-700 transition-colors ${dragOverTrack === 'video' ? 'bg-gray-800/50' : ''}`}
+          className={`relative border-b border-gray-700 transition-colors cursor-pointer ${
+            dragOverTrack === 'video' ? 'bg-gray-800/50' : ''
+          } ${isDraggingPlayhead ? '' : 'hover:bg-gray-800/30'}`}
           style={{ height: '80px' }}
           onDragOver={(e) => handleDragOver(e, 'video')}
           onDragLeave={handleDragLeave}
           onDrop={(e) => handleDrop(e, 'video')}
+          onClick={(e) => {
+            if (!isDraggingPlayhead) {
+              handlePlayheadAreaClick(e)
+            }
+          }}
         >
           <div className="flex h-full">
             <div
@@ -381,11 +500,18 @@ export const Timeline: React.FC = () => {
         
         {/* Audio Track */}
         <div 
-          className={`relative transition-colors ${dragOverTrack === 'audio' ? 'bg-gray-800/50' : ''}`}
+          className={`relative transition-colors cursor-pointer ${
+            dragOverTrack === 'audio' ? 'bg-gray-800/50' : ''
+          } ${isDraggingPlayhead ? '' : 'hover:bg-gray-800/30'}`}
           style={{ height: '80px' }}
           onDragOver={(e) => handleDragOver(e, 'audio')}
           onDragLeave={handleDragLeave}
           onDrop={(e) => handleDrop(e, 'audio')}
+          onClick={(e) => {
+            if (!isDraggingPlayhead) {
+              handlePlayheadAreaClick(e)
+            }
+          }}
         >
           <div className="flex h-full">
             <div

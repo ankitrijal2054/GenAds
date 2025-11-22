@@ -74,7 +74,8 @@ export const MediaLibrarySidebar: React.FC<MediaLibrarySidebarProps> = ({
       })
 
       const duration = mediaElement.duration || 30
-      URL.revokeObjectURL(url)
+      // DON'T revoke the URL - we need it for playback
+      // The URL will be valid as long as the page is open
 
       // Create clip for media library
       const clipId = `uploaded-${type}-${Date.now()}`
@@ -97,7 +98,7 @@ export const MediaLibrarySidebar: React.FC<MediaLibrarySidebarProps> = ({
       // Add to media library (not directly to timeline)
       addToMediaLibrary(clip)
 
-      // Store clip source
+      // Store clip source with libraryId as key (so it can be found when dropped)
       const store = useEditorStore.getState()
       store.setClipSource(clipId, url)
 
