@@ -4,13 +4,15 @@ import { motion } from 'framer-motion'
 import { Button } from '@/components/ui'
 import { PreviewPlayer } from '@/components/editing/PreviewPlayer'
 import { Timeline } from '@/components/editing/Timeline'
+import { MediaLibrarySidebar } from '@/components/editing/MediaLibrarySidebar'
 import { useCampaigns } from '@/hooks/useCampaigns'
 import { useEditorStore, type TimelineClip } from '@/stores/editorStore'
 import { manualEditing } from '@/services/api'
-import { ArrowLeft, CheckCircle2, Loader2 } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Loader2, FolderOpen } from 'lucide-react'
 
 /**
  * Initialize timeline from campaign data
+ * Shows scene clips if manual_editing_done is false, final video if true
  */
 const initializeTimelineFromCampaign = async (
   campaign: any,
@@ -20,6 +22,48 @@ const initializeTimelineFromCampaign = async (
     ? JSON.parse(campaign.campaign_json)
     : campaign.campaign_json
   
+  const store = useEditorStore.getState()
+  
+  // Check if manual editing is done - show final video instead of scenes
+  if (campaign.manual_editing_done) {
+    // Load final video from variationPaths
+    const variationPaths = campaignJson.variationPaths || {}
+    const variationPath = variationPaths[`variation_${variationIndex}`] || {}
+    const aspectExports = variationPath.aspectExports || {}
+    const finalVideoUrl = aspectExports['9:16'] || aspectExports['16:9'] || null
+    
+    if (finalVideoUrl) {
+      // Create single video clip for final video
+      // Estimate duration (we'll get actual duration from video metadata if needed)
+      const estimatedDuration = 120 // Default 2 minutes, will be updated when video loads
+      
+      const finalVideoClip: TimelineClip = {
+        id: 'final-video',
+        libraryId: 'final-video',
+        name: 'Final Video',
+        trackType: 'video',
+        duration: estimatedDuration,
+        trimStart: 0,
+        trimEnd: estimatedDuration,
+        effectiveDuration: estimatedDuration,
+        position: 0,
+        videoUrl: finalVideoUrl
+      }
+      
+      store.setTimelineVideoClips([finalVideoClip])
+      store.setTimelineAudioClips([])
+      store.setTimelineTotalDuration(estimatedDuration)
+      store.setClipSource('final-video', finalVideoUrl)
+    } else {
+      // No final video found, show empty timeline
+      store.setTimelineVideoClips([])
+      store.setTimelineAudioClips([])
+      store.setTimelineTotalDuration(120) // Default 2 minutes
+    }
+    return
+  }
+  
+  // Manual editing not done - show scene clips
   const scenes = campaignJson.scenes || []
   
   // Fetch scene data from API
@@ -45,7 +89,10 @@ const initializeTimelineFromCampaign = async (
   }))
   
   // Create audio clip for music
-  const totalDuration = scenes.reduce((sum: number, s: any) => sum + (s.duration || 4), 0)
+  const totalDuration = Math.max(
+    scenes.reduce((sum: number, s: any) => sum + (s.duration || 4), 0),
+    120 // Minimum 2 minutes
+  )
   const audioClip: TimelineClip = {
     id: 'music-track',
     libraryId: 'music-track',
@@ -60,10 +107,16 @@ const initializeTimelineFromCampaign = async (
   }
   
   // Initialize store
-  const store = useEditorStore.getState()
   store.setTimelineVideoClips(videoClips)
   store.setTimelineAudioClips([audioClip])
   store.setTimelineTotalDuration(totalDuration)
+  
+  // Populate media library with all scenes and music
+  const allMediaItems: TimelineClip[] = [
+    ...videoClips.map(clip => ({ ...clip, position: 0 })), // Reset position for library items
+    { ...audioClip, position: 0 }
+  ]
+  store.setMediaLibrary(allMediaItems)
   
   // Set clip sources for playback
   videoClips.forEach((clip) => {
@@ -86,6 +139,7 @@ export const ManualEditing = () => {
   const [isExporting, setIsExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [exportProgress, setExportProgress] = useState(0)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   
   // Load campaign and initialize timeline
   useEffect(() => {
@@ -97,17 +151,10 @@ export const ManualEditing = () => {
         const data = await getCampaign(campaignId)
         setCampaign(data)
         
-        // Check if manual editing is already done
-        if (data.manual_editing_done) {
-          // Redirect to results page - editing not allowed
-          navigate(`/campaigns/${campaignId}/results`)
-          return
-        }
-        
         // Get selected variation index
         const variationIndex = data.selected_variation_index || 0
         
-        // Initialize timeline with scenes and music
+        // Initialize timeline (shows scenes if not done, final video if done)
         await initializeTimelineFromCampaign(data, variationIndex)
       } catch (err: any) {
         console.error('Failed to load campaign:', err)
@@ -201,9 +248,9 @@ export const ManualEditing = () => {
   }
   
   return (
-    <div className="h-screen flex flex-col bg-charcoal-950 overflow-hidden">
+    <div className="h-screen flex flex-col bg-charcoal-950 overflow-hidden relative">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-700 bg-charcoal-900">
+      <div className="flex items-center justify-between p-4 border-b border-gray-700 bg-charcoal-900 z-10">
         <div className="flex items-center gap-4">
           <Button
             variant="ghost"
@@ -217,29 +264,54 @@ export const ManualEditing = () => {
         </div>
         
         <div className="flex items-center gap-2">
+          {/* Media Library Button - Only show if manual editing not done */}
+          {campaign && !campaign.manual_editing_done && (
+            <Button
+              variant="ghost"
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              className={`text-gray-400 hover:text-white ${isSidebarOpen ? 'bg-gray-700' : ''}`}
+            >
+              <FolderOpen className="w-4 h-4 mr-2" />
+              Media Library
+            </Button>
+          )}
           {isExporting && (
             <div className="flex items-center gap-2 text-sm text-gray-400">
               <Loader2 className="w-4 h-4 animate-spin" />
               <span>Exporting... {Math.round(exportProgress)}%</span>
             </div>
           )}
-          <Button
-            onClick={handleExport}
-            disabled={isExporting}
-            className="bg-accent-gold text-charcoal-950 hover:bg-accent-gold-dark"
-          >
-            {isExporting ? 'Exporting...' : 'Export to Campaign'}
-          </Button>
+          {!campaign?.manual_editing_done && (
+            <Button
+              onClick={handleExport}
+              disabled={isExporting}
+              className="bg-accent-gold text-charcoal-950 hover:bg-accent-gold-dark"
+            >
+              {isExporting ? 'Exporting...' : 'Export to Campaign'}
+            </Button>
+          )}
         </div>
       </div>
       
-      {/* Preview Player */}
-      <div className="flex-1 min-h-0 p-4">
-        <PreviewPlayer />
+      {/* Main Content Area */}
+      <div className="flex-1 flex min-h-0 relative">
+        {/* Preview Player */}
+        <div className={`flex-1 min-h-0 p-4 transition-all duration-300 ${isSidebarOpen ? 'mr-80' : ''}`}>
+          <PreviewPlayer />
+        </div>
+        
+        {/* Media Library Sidebar */}
+        {campaign && !campaign.manual_editing_done && (
+          <MediaLibrarySidebar
+            isOpen={isSidebarOpen}
+            onClose={() => setIsSidebarOpen(false)}
+            campaign={campaign}
+          />
+        )}
       </div>
       
       {/* Timeline */}
-      <div className="h-64 border-t border-gray-700">
+      <div className={`h-64 border-t border-gray-700 transition-all duration-300 ${isSidebarOpen ? 'mr-80' : ''}`}>
         <Timeline />
       </div>
     </div>

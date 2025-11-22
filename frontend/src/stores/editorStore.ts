@@ -43,6 +43,9 @@ export interface EditorStore {
   // Clip sources map (for storing S3 URLs)
   clipSources: Record<string, string>
   
+  // Media Library (all available media: scenes, music, uploaded files)
+  mediaLibrary: TimelineClip[]
+  
   // Actions
   setTimelineVideoClips: (clips: TimelineClip[]) => void
   setTimelineAudioClips: (clips: TimelineClip[]) => void
@@ -54,6 +57,11 @@ export interface EditorStore {
   setTimelineTotalDuration: (duration: number) => void
   setClipSource: (clipId: string, url: string) => void
   getClipSource: (clipId: string) => string | undefined
+  
+  // Media Library actions
+  setMediaLibrary: (items: TimelineClip[]) => void
+  addToMediaLibrary: (item: TimelineClip) => void
+  removeFromMediaLibrary: (itemId: string) => void
   
   // Timeline manipulation actions
   addClipToTrack: (trackType: 'video' | 'audio', clip: TimelineClip) => void
@@ -122,6 +130,7 @@ export const useEditorStore = create<EditorStore>()(
         timelineTotalDuration: 0,
         volume: 1,
         clipSources: {},
+        mediaLibrary: [],
         
         // Actions
         setTimelineVideoClips: (clips) => set({ timelineVideoClips: clips }),
@@ -144,6 +153,15 @@ export const useEditorStore = create<EditorStore>()(
           }
         })),
         getClipSource: (clipId) => get().clipSources[clipId],
+        
+        // Media Library actions
+        setMediaLibrary: (items) => set({ mediaLibrary: items }),
+        addToMediaLibrary: (item) => set((state) => ({
+          mediaLibrary: [...state.mediaLibrary, item]
+        })),
+        removeFromMediaLibrary: (itemId) => set((state) => ({
+          mediaLibrary: state.mediaLibrary.filter((item) => item.id !== itemId)
+        })),
         
         // Timeline manipulation
         addClipToTrack: (trackType, clip) => set((state) => {
