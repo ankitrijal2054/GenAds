@@ -202,32 +202,100 @@ export const ManualEditing = () => {
       ctx.fillRect(0, 0, canvas.width, canvas.height)
       
       // Create MediaRecorder from canvas stream
-      // Use requestAnimationFrame to ensure continuous updates
       const canvasStream = canvas.captureStream(30) // 30 fps
       
-      // Keep canvas active by drawing periodically
-      let animationFrameId: number
-      const keepCanvasActive = () => {
-        // Draw a tiny pixel to keep stream active
-        ctx.fillStyle = '#000000'
-        ctx.fillRect(0, 0, 1, 1)
-        animationFrameId = requestAnimationFrame(keepCanvasActive)
+      // Create audio context for mixing audio
+      const audioContext = new AudioContext({ sampleRate: 44100 })
+      const audioDestination = audioContext.createMediaStreamDestination()
+      const audioGainNode = audioContext.createGain()
+      audioGainNode.gain.value = 1.0
+      audioGainNode.connect(audioDestination)
+      
+      // Load and connect audio clips
+      const audioElements: Map<string, HTMLAudioElement> = new Map()
+      const audioSourceNodes: Map<string, MediaElementAudioSourceNode> = new Map()
+      
+      for (const audioClip of timelineAudioClips) {
+        const audioSource = store.getClipSource(audioClip.id) || audioClip.audioUrl
+        if (!audioSource) continue
+        
+        const audio = document.createElement('audio')
+        audio.crossOrigin = 'anonymous'
+        audio.preload = 'auto'
+        audio.loop = false
+        
+        await new Promise<void>((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(new Error(`Timeout loading audio: ${audioClip.name}`))
+          }, 10000)
+          
+          const cleanup = () => {
+            clearTimeout(timeout)
+            audio.removeEventListener('loadeddata', onLoadedData)
+            audio.removeEventListener('error', onError)
+            audio.removeEventListener('canplay', onCanPlay)
+          }
+          
+          const onLoadedData = () => {
+            cleanup()
+            resolve()
+          }
+          
+          const onCanPlay = () => {
+            cleanup()
+            resolve()
+          }
+          
+          const onError = (e: Event) => {
+            cleanup()
+            console.error('Audio load error:', e)
+            reject(new Error(`Failed to load audio: ${audioClip.name}`))
+          }
+          
+          audio.addEventListener('loadeddata', onLoadedData)
+          audio.addEventListener('canplay', onCanPlay)
+          audio.addEventListener('error', onError)
+          
+          audio.src = audioSource
+          audio.load()
+        })
+        
+        // Create audio source node and connect to gain node
+        try {
+          const sourceNode = audioContext.createMediaElementSource(audio)
+          const clipGainNode = audioContext.createGain()
+          clipGainNode.gain.value = 1.0
+          sourceNode.connect(clipGainNode)
+          clipGainNode.connect(audioGainNode)
+          
+          audioSourceNodes.set(audioClip.id, sourceNode)
+          audioElements.set(audioClip.id, audio)
+        } catch (e) {
+          console.warn('Could not create audio source node:', e)
+          // Continue without audio for this clip
+        }
       }
-      keepCanvasActive()
+      
+      // Add audio tracks to canvas stream
+      const audioTracks = audioDestination.stream.getAudioTracks()
+      audioTracks.forEach(track => canvasStream.addTrack(track))
       
       // Check for supported MIME types
       let mimeType = 'video/webm'
-      if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) {
+      if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')) {
+        mimeType = 'video/webm;codecs=vp9,opus'
+      } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
+        mimeType = 'video/webm;codecs=vp8,opus'
+      } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) {
         mimeType = 'video/webm;codecs=vp9'
-      } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8')) {
-        mimeType = 'video/webm;codecs=vp8'
       } else if (MediaRecorder.isTypeSupported('video/webm')) {
         mimeType = 'video/webm'
       }
       
       const mediaRecorder = new MediaRecorder(canvasStream, {
         mimeType,
-        videoBitsPerSecond: 5000000
+        videoBitsPerSecond: 5000000,
+        audioBitsPerSecond: 128000
       })
       
       const chunks: Blob[] = []
@@ -256,12 +324,14 @@ export const ManualEditing = () => {
         a.click()
         document.body.removeChild(a)
         URL.revokeObjectURL(url)
+        audioContext.close()
         setIsDownloading(false)
       }
       
       mediaRecorder.onerror = (e) => {
         console.error('MediaRecorder error:', e)
         setError('Recording error occurred')
+        audioContext.close()
         setIsDownloading(false)
       }
       
@@ -333,6 +403,7 @@ export const ManualEditing = () => {
       
       // Render frame by frame through entire timeline
       const totalFrames = Math.ceil(totalDuration * frameRate)
+      let lastActiveClipId: string | null = null
       
       for (let frame = 0; frame < totalFrames; frame++) {
         const currentTime = frame / frameRate
@@ -350,17 +421,29 @@ export const ManualEditing = () => {
             const timeInClip = currentTime - activeClip.position
             const targetVideoTime = activeClip.trimStart + timeInClip
             
-            // Seek to correct time if needed (only seek if significantly off)
-            // For better performance, only seek every few frames
-            if (frame % 10 === 0 || Math.abs(video.currentTime - targetVideoTime) > 0.3) {
+            // Only seek when clip changes or when significantly off (reduces flickering)
+            const clipChanged = lastActiveClipId !== activeClip.id
+            if (clipChanged) {
+              // New clip - seek to start and wait for ready
               video.currentTime = targetVideoTime
-              // Minimal wait for seek
-              if (frame % 10 === 0) {
-                await new Promise(r => setTimeout(r, 20))
+              // Wait for video to be ready
+              while (video.readyState < 2) {
+                await new Promise(r => setTimeout(r, 50))
               }
-            } else {
-              // Small incremental update for smoother playback
+              await new Promise(r => setTimeout(r, 50)) // Extra wait for frame to be ready
+              lastActiveClipId = activeClip.id
+            } else if (Math.abs(video.currentTime - targetVideoTime) > 0.3) {
+              // Only seek if significantly off (reduces flickering)
               video.currentTime = targetVideoTime
+              await new Promise(r => setTimeout(r, 50))
+            } else {
+              // Small incremental update without seek
+              video.currentTime = targetVideoTime
+            }
+            
+            // Ensure video is ready before drawing
+            if (video.readyState < 2) {
+              await new Promise(r => setTimeout(r, 30))
             }
             
             // Draw current frame
@@ -411,18 +494,46 @@ export const ManualEditing = () => {
           // No active clip at this time, draw black
           ctx.fillStyle = '#000000'
           ctx.fillRect(0, 0, canvas.width, canvas.height)
+          lastActiveClipId = null
         }
         
-        // Optimized frame timing - use setTimeout with precise timing
+        // Update audio playback synchronized with video
+        for (const audioClip of timelineAudioClips) {
+          const audio = audioElements.get(audioClip.id)
+          if (!audio) continue
+          
+          if (currentTime >= audioClip.position && currentTime < audioClip.position + audioClip.effectiveDuration) {
+            const timeInAudio = currentTime - audioClip.position
+            const targetAudioTime = audioClip.trimStart + timeInAudio
+            
+            // Seek audio if needed
+            if (Math.abs(audio.currentTime - targetAudioTime) > 0.2) {
+              audio.currentTime = targetAudioTime
+            }
+            
+            // Play audio if not playing
+            if (audio.paused && audio.readyState >= 2) {
+              audio.play().catch(e => console.warn('Audio play error:', e))
+            }
+          } else {
+            // Pause audio if outside clip range
+            if (!audio.paused) {
+              audio.pause()
+            }
+          }
+        }
+        
+        // Optimized frame timing
         if (frame < totalFrames - 1) {
           await new Promise(r => setTimeout(r, frameTime * 1000))
         }
       }
       
-      // Stop the animation frame loop
-      if (animationFrameId) {
-        cancelAnimationFrame(animationFrameId)
-      }
+      // Stop all audio
+      audioElements.forEach(audio => {
+        audio.pause()
+        audio.currentTime = 0
+      })
       
       // Wait a bit to ensure all frames are captured
       await new Promise(r => setTimeout(r, 500))
