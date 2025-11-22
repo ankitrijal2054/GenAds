@@ -555,7 +555,7 @@ export const ManualEditing = () => {
   
   // Handle export
   const handleExport = async () => {
-    if (!campaignId) return
+    if (!campaignId || !campaign) return
     
     setIsExporting(true)
     setExportProgress(0)
@@ -571,8 +571,21 @@ export const ManualEditing = () => {
       // Poll for completion
       await pollExportJob(jobId)
       
-      // Show success and redirect
-      navigate(`/campaigns/${campaignId}/results`)
+      // Refresh campaign data to get updated manual_editing_done flag
+      try {
+        const updatedCampaign = await getCampaign(campaignId)
+        setCampaign(updatedCampaign)
+      } catch (err) {
+        console.warn('Failed to refresh campaign data:', err)
+      }
+      
+      // Navigate back to campaign dashboard (not results page)
+      if (campaign.perfume_id) {
+        navigate(`/perfumes/${campaign.perfume_id}`)
+      } else {
+        // Fallback: navigate to dashboard if perfume_id not available
+        navigate('/dashboard')
+      }
     } catch (err: any) {
       console.error('Export failed:', err)
       setError(err?.response?.data?.detail || 'Export failed')
@@ -581,30 +594,45 @@ export const ManualEditing = () => {
     }
   }
   
-  // Poll export job status
+  // Poll export job status by checking campaign status
   const pollExportJob = async (jobId: string) => {
     const maxAttempts = 300 // 5 minutes max (1 second intervals)
     let attempts = 0
     
     while (attempts < maxAttempts) {
       try {
-        // TODO: Add job status polling endpoint
-        // For now, simulate progress
-        setExportProgress(Math.min(100, (attempts / maxAttempts) * 100))
+        // Poll campaign status to check if manual_editing_done is true
+        const updatedCampaign = await getCampaign(campaignId!)
+        
+        if (updatedCampaign.manual_editing_done) {
+          // Export completed successfully
+          setExportProgress(100)
+          return
+        }
+        
+        // Update progress based on attempts
+        setExportProgress(Math.min(95, (attempts / maxAttempts) * 90))
         
         // Wait 1 second before next poll
         await new Promise(resolve => setTimeout(resolve, 1000))
         attempts++
-        
-        // TODO: Check actual job status and break when complete
-        // For now, just wait a fixed time (will be replaced with actual polling)
-        if (attempts > 30) {
-          break // Temporary: simulate completion after 30 seconds
-        }
       } catch (err) {
         console.error('Error polling job:', err)
-        throw err
+        // Continue polling even if one request fails
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        attempts++
       }
+    }
+    
+    // Timeout - check one more time
+    try {
+      const updatedCampaign = await getCampaign(campaignId!)
+      if (updatedCampaign.manual_editing_done) {
+        setExportProgress(100)
+        return
+      }
+    } catch (err) {
+      console.error('Final status check failed:', err)
     }
     
     setExportProgress(100)

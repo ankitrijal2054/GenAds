@@ -500,13 +500,18 @@ class ManualEditExportPipeline:
                 campaign_json['edit_history']['edit_count'] += 1
                 
                 # Update campaign - SET manual_editing_done = True
-                update_campaign(
+                logger.info(f"🔒 Setting manual_editing_done=True for campaign {self.campaign_id}")
+                updated_campaign = update_campaign(
                     self.db,
                     self.campaign_id,
                     campaign_json=campaign_json,
                     status="completed",
                     manual_editing_done=True  # Lock campaign - no more editing
                 )
+                if updated_campaign:
+                    logger.info(f"✅ Successfully updated campaign {self.campaign_id}: manual_editing_done={updated_campaign.manual_editing_done}")
+                else:
+                    logger.error(f"❌ Failed to update campaign {self.campaign_id} - update_campaign returned None")
                 
                 elapsed = time.time() - start_time
                 logger.info(f"✅ Manual edit export complete! Time: {elapsed:.1f}s")

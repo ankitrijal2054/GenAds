@@ -41,6 +41,15 @@ export const CampaignDashboard = () => {
     const campaign = campaigns.find((c) => c.campaign_id === campaignId)
     if (!campaign) return
 
+    // Debug: Log manual_editing_done flag
+    console.log(`Campaign ${campaignId}: manual_editing_done =`, campaign.manual_editing_done)
+
+    // If manual editing is done, navigate directly to manual editing page
+    if (campaign.manual_editing_done) {
+      navigate(`/campaigns/${campaignId}/edit`)
+      return
+    }
+
     // Navigate based on campaign status
     if (campaign.status === 'completed') {
       navigate(`/campaigns/${campaignId}/results`)
