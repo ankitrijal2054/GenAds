@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react'
 import { useTimelineClips, useEditorStore, useTimelinePlayback, type TimelineClip } from '@/stores/editorStore'
 import { TimelineClip as TimelineClipComponent } from './TimelineClip'
-import { ZoomIn, ZoomOut, Volume2, VolumeX } from 'lucide-react'
+import { ZoomIn, ZoomOut, Volume2, VolumeX, Scissors } from 'lucide-react'
 import { formatDuration } from '@/utils/formatters'
 
 // Base viewport width for timeline content (excluding header)
@@ -217,6 +217,14 @@ export const Timeline: React.FC = () => {
     setZoomLevel((prev) => Math.max(prev - ZOOM_STEP, ZOOM_MIN))
   }
 
+  // Handle split clip at playhead
+  const handleSplitClip = (): void => {
+    if (!selectedClipId) return
+    
+    const splitTime = timelinePlayback.currentTime
+    splitClip(selectedClipId, splitTime)
+  }
+
   // Handle mouse wheel zoom
   useEffect(() => {
     const handleWheel = (e: WheelEvent) => {
@@ -370,6 +378,16 @@ export const Timeline: React.FC = () => {
           <span className="text-xs text-gray-500 ml-2">
             (Ctrl/Cmd + Scroll to zoom)
           </span>
+          <div className="h-6 w-px bg-gray-600 mx-2" />
+          <button
+            onClick={handleSplitClip}
+            disabled={!selectedClipId}
+            className="p-2 rounded hover:bg-gray-700 text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            title="Split clip at playhead (S)"
+            aria-label="Split clip"
+          >
+            <Scissors size={18} />
+          </button>
         </div>
         <div className="text-xs text-gray-500">
           Playhead: {formatTime(timelinePlayback.currentTime)} / {formatTime(totalDuration)}
