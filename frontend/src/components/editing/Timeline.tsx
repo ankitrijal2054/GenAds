@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react'
 import { useTimelineClips, useEditorStore, useTimelinePlayback, type TimelineClip } from '@/stores/editorStore'
 import { TimelineClip as TimelineClipComponent } from './TimelineClip'
-import { ZoomIn, ZoomOut } from 'lucide-react'
+import { ZoomIn, ZoomOut, Volume2, VolumeX } from 'lucide-react'
 import { formatDuration } from '@/utils/formatters'
 
 // Base viewport width for timeline content (excluding header)
@@ -50,7 +50,7 @@ const generateTimeMarkers = (duration: number, interval: number): number[] => {
  */
 export const Timeline: React.FC = () => {
   const { timelineVideoClips, timelineAudioClips, selectedClipId } = useTimelineClips()
-  const { selectTimelineClip, splitClip, removeClipFromTrack, moveClip, addClipToTrack } = useEditorStore()
+  const { selectTimelineClip, splitClip, removeClipFromTrack, moveClip, addClipToTrack, toggleTrackMute, isMuted } = useEditorStore()
   const timelinePlayback = useTimelinePlayback()
   
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -478,10 +478,25 @@ export const Timeline: React.FC = () => {
         >
           <div className="flex h-full">
             <div
-              className="flex items-center justify-center border-r border-gray-700 bg-gray-800 text-sm text-gray-400 font-medium"
+              className="flex items-center justify-between px-2 border-r border-gray-700 bg-gray-800 text-sm text-gray-400 font-medium"
               style={{ width: `${TRACK_HEADER_WIDTH}px` }}
             >
-              Video
+              <span>Video</span>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  toggleTrackMute('video')
+                }}
+                className="p-1 hover:bg-gray-700 rounded transition-colors"
+                title={isMuted.video ? 'Unmute video audio' : 'Mute video audio'}
+                aria-label={isMuted.video ? 'Unmute video audio' : 'Mute video audio'}
+              >
+                {isMuted.video ? (
+                  <VolumeX className="w-4 h-4 text-gray-400 hover:text-red-400" />
+                ) : (
+                  <Volume2 className="w-4 h-4 text-gray-400 hover:text-white" />
+                )}
+              </button>
             </div>
             <div className="relative" style={{ width: `${timelineWidth - TRACK_HEADER_WIDTH}px`, minWidth: `${viewportWidth}px` }}>
               {timelineVideoClips.map((clip) => (
@@ -515,10 +530,25 @@ export const Timeline: React.FC = () => {
         >
           <div className="flex h-full">
             <div
-              className="flex items-center justify-center border-r border-gray-700 bg-gray-800 text-sm text-gray-400 font-medium"
+              className="flex items-center justify-between px-2 border-r border-gray-700 bg-gray-800 text-sm text-gray-400 font-medium"
               style={{ width: `${TRACK_HEADER_WIDTH}px` }}
             >
-              Audio
+              <span>Audio</span>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  toggleTrackMute('audio')
+                }}
+                className="p-1 hover:bg-gray-700 rounded transition-colors"
+                title={isMuted.audio ? 'Unmute audio track' : 'Mute audio track'}
+                aria-label={isMuted.audio ? 'Unmute audio track' : 'Mute audio track'}
+              >
+                {isMuted.audio ? (
+                  <VolumeX className="w-4 h-4 text-gray-400 hover:text-red-400" />
+                ) : (
+                  <Volume2 className="w-4 h-4 text-gray-400 hover:text-white" />
+                )}
+              </button>
             </div>
             <div className="relative" style={{ width: `${timelineWidth - TRACK_HEADER_WIDTH}px`, minWidth: `${viewportWidth}px` }}>
               {timelineAudioClips.map((clip) => (

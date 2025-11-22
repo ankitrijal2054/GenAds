@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react'
-import { Upload, Video, Music, X, Loader2, GripVertical } from 'lucide-react'
+import { Upload, Video, Music, X, Loader2, GripVertical, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui'
 import { useEditorStore, type TimelineClip } from '@/stores/editorStore'
 import { formatDuration } from '@/utils/formatters'
@@ -20,13 +20,40 @@ export const MediaLibrarySidebar: React.FC<MediaLibrarySidebarProps> = ({
   onClose,
   campaign
 }) => {
-  const { mediaLibrary, addToMediaLibrary, addClipToTrack } = useEditorStore()
+  const { mediaLibrary, addToMediaLibrary, removeFromMediaLibrary } = useEditorStore()
   const [isUploading, setIsUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [draggedItem, setDraggedItem] = useState<TimelineClip | null>(null)
   const videoInputRef = useRef<HTMLInputElement>(null)
   const audioInputRef = useRef<HTMLInputElement>(null)
+
+  // Check if item is uploaded (can be deleted) vs original scene/music
+  const isUploadedItem = (item: TimelineClip): boolean => {
+    return item.id.startsWith('uploaded-') || item.libraryId.startsWith('uploaded-')
+  }
+
+  // Handle delete item from library
+  const handleDeleteItem = (item: TimelineClip) => {
+    // Only allow deleting uploaded items
+    if (!isUploadedItem(item)) {
+      return
+    }
+
+    // Revoke blob URL if it's a blob URL
+    const store = useEditorStore.getState()
+    const clipSource = store.getClipSource(item.id) || item.videoUrl || item.audioUrl
+    if (clipSource && clipSource.startsWith('blob:')) {
+      URL.revokeObjectURL(clipSource)
+      // Also remove from clipSources map
+      const updatedSources = { ...store.clipSources }
+      delete updatedSources[item.id]
+      // Note: We can't directly set clipSources, but it will be cleaned up when item is removed
+    }
+
+    // Remove from media library
+    removeFromMediaLibrary(item.id)
+  }
 
   const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -245,7 +272,7 @@ export const MediaLibrarySidebar: React.FC<MediaLibrarySidebarProps> = ({
                   draggable
                   onDragStart={(e) => handleDragStart(e, item)}
                   onDragEnd={handleDragEnd}
-                  className={`p-3 bg-charcoal-800 rounded-lg border border-gray-700 cursor-move hover:border-accent-gold transition-colors ${
+                  className={`p-3 bg-charcoal-800 rounded-lg border border-gray-700 cursor-move hover:border-accent-gold transition-colors group ${
                     draggedItem?.id === item.id ? 'opacity-50' : ''
                   }`}
                 >
@@ -257,7 +284,22 @@ export const MediaLibrarySidebar: React.FC<MediaLibrarySidebarProps> = ({
                         {formatDuration(item.duration)}
                       </p>
                     </div>
-                    <Video className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      {isUploadedItem(item) && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleDeleteItem(item)
+                          }}
+                          className="p-1 hover:bg-red-900/30 rounded transition-colors opacity-0 group-hover:opacity-100"
+                          title="Delete from library"
+                          aria-label="Delete from library"
+                        >
+                          <Trash2 className="w-4 h-4 text-gray-400 hover:text-red-400" />
+                        </button>
+                      )}
+                      <Video className="w-4 h-4 text-gray-500" />
+                    </div>
                   </div>
                 </div>
               ))}
@@ -279,7 +321,7 @@ export const MediaLibrarySidebar: React.FC<MediaLibrarySidebarProps> = ({
                   draggable
                   onDragStart={(e) => handleDragStart(e, item)}
                   onDragEnd={handleDragEnd}
-                  className={`p-3 bg-charcoal-800 rounded-lg border border-gray-700 cursor-move hover:border-accent-gold transition-colors ${
+                  className={`p-3 bg-charcoal-800 rounded-lg border border-gray-700 cursor-move hover:border-accent-gold transition-colors group ${
                     draggedItem?.id === item.id ? 'opacity-50' : ''
                   }`}
                 >
@@ -291,7 +333,22 @@ export const MediaLibrarySidebar: React.FC<MediaLibrarySidebarProps> = ({
                         {formatDuration(item.duration)}
                       </p>
                     </div>
-                    <Music className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      {isUploadedItem(item) && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleDeleteItem(item)
+                          }}
+                          className="p-1 hover:bg-red-900/30 rounded transition-colors opacity-0 group-hover:opacity-100"
+                          title="Delete from library"
+                          aria-label="Delete from library"
+                        >
+                          <Trash2 className="w-4 h-4 text-gray-400 hover:text-red-400" />
+                        </button>
+                      )}
+                      <Music className="w-4 h-4 text-gray-500" />
+                    </div>
                   </div>
                 </div>
               ))}
