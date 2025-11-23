@@ -239,38 +239,19 @@ class VideoGenerator:
             if extracted_style.get("mood"):
                 style_parts.append(f"Reference Mood: {extracted_style['mood']}")
 
-        # Add reference image usage instructions
-        # These describe HOW the reference images should be used in the scene
-        reference_instructions = []
-        
-        if use_product:
-            reference_instructions.append(
-                "The provided product reference image should be integrated as the hero element of the scene. "
-                "The product should appear naturally within the composition, maintaining its authentic appearance "
-                "with proper lighting, shadows, and depth. The product should be the focal point, positioned prominently "
-                "but organically within the scene's environment."
-            )
-            logger.debug("Added product reference usage instructions")
-        
-        if use_logo:
-            reference_instructions.append(
-                "The provided brand logo reference image should be subtly integrated into the scene. "
-                "The logo should complement the composition without overwhelming it, appearing naturally "
-                "within the environment (e.g., on surfaces, as part of the scene, or as a subtle brand moment). "
-                "Maintain the logo's recognizable form while ensuring it feels integrated into the scene's aesthetic."
-            )
-            logger.debug("Added logo reference usage instructions")
+        # NOTE: Reference image usage instructions are NOT added here.
+        # The master prompt from scene_planner.py already contains detailed instructions
+        # about how to use reference images (hero shot, logo host, blended/interacting, etc.).
+        # We trust the scene planner's prompt to guide Veo 3.1 on reference image usage.
 
-        # Combine all parts
+        # Combine style parts (if any)
         style_string = ". ".join(style_parts) if style_parts else ""
-        reference_string = " ".join(reference_instructions) if reference_instructions else ""
         
         # Build final enhanced prompt
+        # The prompt from scene_planner already contains all reference image usage instructions
         enhanced = prompt
         if style_string:
             enhanced = f"{enhanced}. {style_string}"
-        if reference_string:
-            enhanced = f"{enhanced}. {reference_string}"
         enhanced = f"{enhanced}. Modern cinematic product commercial."
 
         logger.info(f"📝 Enhanced prompt sent to Veo 3.1: {enhanced[:200]}...")

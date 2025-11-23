@@ -179,55 +179,88 @@ class ScenePlanner:
 
         for i, scene_dict in enumerate(scenes_json):
             role = scene_dict.get("role")
+            is_second_to_last = (i == len(scenes_json) - 2)
+            is_last_scene = (i == len(scenes_json) - 1)
 
             # 3) Enforce unified background_type
             scene_dict["background_type"] = forced_background_type
 
-            # 4) Limit product usage — hook, showcase, or last scene (CTA)
-            # Last scene always needs product for smooth ending
-            is_last_scene = (i == len(scenes_json) - 1)
-            if role not in ["hook", "showcase"] and not is_last_scene:
-                scene_dict["use_product"] = False
-                scene_dict["product_position"] = None
-                scene_dict["product_scale"] = None
+            # 4) Product usage rules:
+            # - Second-to-last scene: MANDATORY use_product=true (hero shot)
+            # - Last scene: Optional (logo + text are primary)
+            # - Middle scenes: Based on story need (blended/interacting)
+            if is_second_to_last:
+                # Second-to-last scene MUST have product (hero shot)
+                scene_dict["use_product"] = True
+                scene_dict["product_position"] = scene_dict.get("product_position", "center")
+                scene_dict["product_scale"] = scene_dict.get("product_scale", 0.6)
+            elif is_last_scene:
+                # Last scene: Product optional (logo + text are primary)
+                # Don't force product here - let LLM decide based on narrative
+                pass
+            else:
+                # Middle scenes: Allow product if story needs it (already set by LLM)
+                # Don't remove product from middle scenes - they should have story flow
+                pass
 
-            # 4) Limit logo usage — hook, CTA, or last scene
-            if role not in ["hook", "cta"] and not is_last_scene:
-                scene_dict["use_logo"] = False
-                scene_dict["logo_position"] = None
-                scene_dict["logo_scale"] = None
+            # 5) Logo usage rules:
+            # - Last scene: MANDATORY use_logo=true (logo host)
+            # - Other scenes: Based on narrative need
+            if is_last_scene:
+                # Last scene MUST have logo (logo host)
+                scene_dict["use_logo"] = True
+                scene_dict["logo_position"] = scene_dict.get("logo_position", "center")
+                scene_dict["logo_scale"] = scene_dict.get("logo_scale", 0.3)
+            elif role not in ["hook", "cta"] and not is_second_to_last:
+                # Middle scenes: Allow logo if story needs it, but not mandatory
+                pass
 
-            # 5) Remove text overlays except hook & CTA
-            if role not in ["hook", "cta"]:
+            # 6) Text overlays: Only hook, second-to-last (optional), and last (MANDATORY)
+            if role not in ["hook", "cta"] and not is_second_to_last:
                 if "overlay" in scene_dict:
                     scene_dict["overlay"]["text"] = ""
 
-        # 6) CRITICAL: Ensure last scene ends smoothly (CTA) with product + text
+        # 7) CRITICAL: Ensure second-to-last scene is hero shot with product
+        if len(scenes_json) >= 2:
+            second_to_last_scene = scenes_json[-2]
+            second_to_last_scene["use_product"] = True  # MANDATORY - hero shot
+            second_to_last_scene["product_position"] = second_to_last_scene.get("product_position", "center")
+            second_to_last_scene["product_scale"] = second_to_last_scene.get("product_scale", 0.6)
+            second_to_last_scene["camera_movement"] = second_to_last_scene.get("camera_movement", "slow_zoom_in")
+            # Remove text from second-to-last (save for last scene)
+            if "overlay" in second_to_last_scene:
+                second_to_last_scene["overlay"]["text"] = ""
+            logger.info(f"✅ Enforced second-to-last scene as hero shot with product")
+
+        # 8) CRITICAL: Ensure last scene is logo host with animated text overlay
         last_scene = scenes_json[-1]
         last_scene["transition_to_next"] = "fade"  # Smooth ending, not cut-off
         last_scene["camera_movement"] = "slow_zoom_out"  # Feels like conclusion
-        last_scene["use_product"] = True  # MANDATORY - last scene always shows product
-        last_scene["product_position"] = last_scene.get("product_position", "center")
-        last_scene["product_scale"] = last_scene.get("product_scale", 0.5)
+        last_scene["use_logo"] = True  # MANDATORY - logo is the host element
+        last_scene["logo_position"] = last_scene.get("logo_position", "center")
+        last_scene["logo_scale"] = last_scene.get("logo_scale", 0.3)
         
-        # Ensure last scene has text overlay with perfume + brand name
+        # Ensure last scene has ANIMATED text overlay with perfume + brand name
         if "overlay" not in last_scene:
             last_scene["overlay"] = {}
         if not last_scene["overlay"].get("text") or last_scene["overlay"]["text"].strip() == "":
-            # Extract perfume_name and brand_name from context - will be set by LLM but ensure fallback
+            # Extract perfume_name and brand_name from context
             perfume_name_str = perfume_name or brand_name
             brand_name_str = brand_name
             last_scene["overlay"]["text"] = f"{perfume_name_str}\n{brand_name_str}" if perfume_name_str != brand_name_str else perfume_name_str
-            last_scene["overlay"]["position"] = last_scene["overlay"].get("position", "bottom")
-            last_scene["overlay"]["duration"] = last_scene["overlay"].get("duration", 3.0)
-            last_scene["overlay"]["font_size"] = last_scene["overlay"].get("font_size", 48)
-            last_scene["overlay"]["color"] = last_scene["overlay"].get("color", brand_colors[0] if brand_colors else "#FFFFFF")
-            last_scene["overlay"]["animation"] = last_scene["overlay"].get("animation", "fade_in")
+        last_scene["overlay"]["position"] = last_scene["overlay"].get("position", "bottom")
+        last_scene["overlay"]["duration"] = last_scene["overlay"].get("duration", 4.0)  # Longer for final
+        last_scene["overlay"]["font_size"] = last_scene["overlay"].get("font_size", 52)  # Larger for impact
+        last_scene["overlay"]["color"] = last_scene["overlay"].get("color", brand_colors[0] if brand_colors else "#FFFFFF")
+        # CRITICAL: Text overlay MUST have animation (not static)
+        if not last_scene["overlay"].get("animation") or last_scene["overlay"]["animation"] == "none":
+            last_scene["overlay"]["animation"] = "fade_in"  # Default animation
         
-        # Refine last scene prompt to emphasize smooth ending
+        # Refine last scene prompt to emphasize logo host + animated text
         original_last_prompt = last_scene.get("background_prompt", "")
-        if "conclusion" not in original_last_prompt.lower() and "complete" not in original_last_prompt.lower():
-            last_scene["background_prompt"] = f"{original_last_prompt} This final moment should feel like a natural conclusion to the story, with smooth camera movement and elegant resolution, not an abrupt ending."
+        if "logo" not in original_last_prompt.lower() and "brand" not in original_last_prompt.lower():
+            last_scene["background_prompt"] = f"{original_last_prompt} Brand logo prominently displayed as host element. Animated text overlay with perfume name and brand name. This final moment should feel like a natural conclusion to the story with strong brand presence, smooth camera movement and elegant resolution."
+        logger.info(f"✅ Enforced last scene as logo host with animated text overlay")
 
         # STEP 4: Generate style specification (with derived tone)
         if extracted_style:
@@ -387,7 +420,7 @@ If any style or tone is implied (e.g. cinematic, dark premium, minimal studio, l
 Target Duration: {target_duration}s (flexible ±20%)
 Duration Range per Scene: 3-8 seconds
 Recommended Scene Count: 3-9 scenes
-Video Aspect Ratio: 9:16 (TikTok vertical - hardcoded)
+Video Aspect Ratio: 9:16 (TikTok vertical - hardcoded
 
 === AVAILABLE ASSETS ===
 {asset_instructions}
@@ -818,13 +851,39 @@ MOTION & PHYSICS:
 - Dust motes in light, glitter falling, smoke wisps, petal shower
 - Hair movement, breath visible in cold air, steam rising
 
-PRODUCT INTEGRATION (when use_product=True):
-- Natural placement: On pedestal, held by hand, reflected in mirror, underwater,
-  suspended in air, among flowers, on silk fabric, in beam of light
-- Interactions: Casting shadow, reflecting light, causing ripples, touching water,
-  surrounded by particles, creating bokeh, center of composition
-- Movement: Rotating slowly, rising from liquid, descending on crane shot,
-  revealed through rack focus, emerging from fog
+PRODUCT INTEGRATION (when use_product=True) - BLENDED STORYTELLING:
+CRITICAL: Product must INTERACT with the story, not just appear as a static hero shot.
+
+NATURAL PLACEMENT (blended into story):
+- On pedestal within the narrative context (not isolated)
+- Held by hand as part of the story action
+- Reflected in mirror as part of the scene composition
+- Underwater as part of an underwater story
+- Suspended in air with story elements around it
+- Among flowers that are part of the narrative
+- On silk fabric that flows with the story
+- In beam of light that creates story atmosphere
+
+INTERACTIONS (product affects/responds to story):
+- Casting shadow that interacts with scene elements
+- Reflecting light that illuminates story elements
+- Causing ripples in water as part of the narrative
+- Touching water with visible interaction
+- Surrounded by particles that are part of the story
+- Creating bokeh that enhances the scene mood
+- Center of composition but integrated with surroundings
+
+MOVEMENT (product moves within story context):
+- Rotating slowly as part of the narrative flow
+- Rising from liquid as part of the story progression
+- Descending on crane shot within the scene context
+- Revealed through rack focus as story element
+- Emerging from fog as part of the narrative reveal
+
+SECOND-TO-LAST SCENE (Hero Shot Exception):
+- This is the ONLY scene where product can be a pure hero shot
+- Even here, try to make it feel like part of the overall narrative
+- Use dramatic lighting and composition to showcase the reference product image
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📚 PERFUME VISUAL LANGUAGE LIBRARY (Use as Reference, Not Rules)
@@ -848,34 +907,68 @@ Scene Count: {scene_count} scenes
 Max Scene Duration: 8 seconds (CRITICAL - each scene MUST be ≤8s)
 {f"Gender: {perfume_gender.upper()}" if perfume_gender else ""}
 
-VEO 3.1 REFERENCE IMAGE INTEGRATION:
-- Veo 3.1 can accept product image as reference to integrate naturally into the scene
-- Set use_product=true when the scene story/narrative calls for showing the product
-- Set use_logo=true when brand presence enhances the scene story
+VEO 3.1 REFERENCE IMAGE INTEGRATION (CRITICAL):
+- Veo 3.1 accepts the PRODUCT REFERENCE IMAGE to integrate naturally into scenes
+- CRITICAL RULE: The product reference image is the ACTUAL perfume bottle being advertised
+- If ANY perfume bottle appears in ANY scene, it MUST be this reference product image
+- DO NOT generate random perfume bottles - ONLY use the reference product image
+- The reference image will be passed to Veo 3.1 when use_product=true
+- Set use_product=true when:
+  * Second-to-last scene (MANDATORY - hero shot)
+  * Middle scenes where product naturally appears in the story (blended/interacting)
+  * Last scene (optional - logo + text are primary)
+- Set use_logo=true when:
+  * Last scene (MANDATORY - logo host)
+  * Other scenes where brand presence enhances the narrative
 - Base these decisions on NARRATIVE NEED, not arbitrary rules
-- Examples of good product usage:
-  * Opening hook to establish product presence
-  * Mid-story moments that showcase product features/details
-  * Final resolution that completes the narrative with product + brand name
 
-MANDATORY STRUCTURE:
+MANDATORY STRUCTURE (CRITICAL - FOLLOW EXACTLY):
 1. FIRST scene: {flow_rules.get('first_scene_must_be', ['macro_bottle', 'atmospheric'])} shot type
    - Should establish the story/atmosphere
-   - Can use product if it strengthens the opening
-2. MIDDLE scenes: Build narrative, create visual flow, advance story
-   - Use product when story naturally calls for it
+   - Can use product if it strengthens the opening, but NOT as hero shot
+   - Focus on setting the narrative tone and visual world
+
+2. MIDDLE scenes (all scenes except second-to-last and last): Build narrative, create visual flow, advance story
+   - These scenes MUST have a coherent story flow that connects together
+   - Product should appear when the story naturally calls for it
+   - CRITICAL: When product appears, it must be BLENDED and INTERACTING with the story
+     * NOT just shown as a static hero shot
+     * Examples: Product casting shadows, reflecting light, causing ripples, surrounded by story elements,
+       emerging from fog, rotating in context, being touched by hands, integrated into the environment
+   - CRITICAL: If ANY perfume bottle is shown in ANY scene, it MUST be the ACTUAL product from the reference image
+     * Do NOT generate random perfume bottles
+     * The product reference image is the ONLY perfume that should appear
+     * Describe the scene to naturally incorporate the reference product image
    - Ensure each scene connects visually and narratively to previous
-3. LAST scene: {flow_rules.get('last_scene_must_be', ['brand_moment'])} shot type
-   - MUST ALWAYS use product (use_product: true) - This is the resolution moment
-   - MUST ALWAYS include text overlay with "{perfume_name}" + "{brand_name}"
+   - Each scene should advance the story, not just be random shots
+
+3. SECOND-TO-LAST scene (scene {scene_count - 2}): REFERENCE IMAGE HERO SHOT
+   - MUST ALWAYS use product (use_product: true) - This is the hero moment
+   - This is where the reference product image takes center stage
+   - Should be a cinematic hero shot showcasing the product beautifully
+   - Can use dramatic lighting, elegant composition, premium aesthetic
+   - Product should be the clear focal point of this scene
+   - This scene builds anticipation for the final logo/text scene
+
+4. LAST scene (scene {scene_count - 1}): LOGO HOST WITH ANIMATED TEXT OVERLAY
+   - MUST ALWAYS use logo (use_logo: true) - Logo is the host element
+   - MUST ALWAYS include animated text overlay with:
+     * Perfume name: "{perfume_name}"
+     * Brand name: "{brand_name}"
+     * Additional relevant text (tagline, call-to-action, etc.) if appropriate
+   - Text overlay MUST have animation (fade_in, slide, etc.) - NOT static
+   - Product can appear but logo + text are the primary focus
    - MUST use slow_zoom_out camera movement (feels like conclusion)
    - MUST use "fade" transition (smooth ending, not cut-off)
-   - Should feel like natural story completion, not abrupt ending
-4. Product appears in {flow_rules['product_visibility_rules']['minimum_product_scenes']}-{flow_rules['product_visibility_rules']['maximum_product_scenes']} scenes
-   - Base this on story needs, not rules
-   - Last scene ALWAYS counts as one of these
-5. Each scene duration: 3-8 seconds (NEVER exceed 8 seconds per scene)
-6. Total duration: ±{int(target_duration * 0.15)}s from {target_duration}s
+   - Should feel like natural story completion with brand presence
+
+5. Product appears in {flow_rules['product_visibility_rules']['minimum_product_scenes']}-{flow_rules['product_visibility_rules']['maximum_product_scenes']} scenes total
+   - Second-to-last scene ALWAYS counts as one (hero shot)
+   - Middle scenes count when product is naturally part of the story
+   - Last scene may or may not include product (logo + text are primary)
+
+6. Each scene duration: 3-8 seconds (NEVER exceed 8 seconds per scene)
+7. Total duration: ±{int(target_duration * 0.15)}s from {target_duration}s
 
 STORY FLOW REQUIREMENTS:
 - Scene transitions should feel like one continuous narrative
@@ -929,27 +1022,49 @@ Return ONLY valid JSON array with {scene_count} scene objects:
       "animation": "fade_in"
     }}
   }},
-  ... (middle scenes that build the narrative) ...
+  ... (middle scenes that build the narrative with story flow - product blended/interacting when needed) ...
+  {{
+    "scene_id": {scene_count - 2},
+    "shot_type": "macro_bottle",
+    "shot_variation": "hero_showcase",
+    "role": "showcase",
+    "duration": 6,  # MUST be 3-8 seconds (max 8s)
+    "background_prompt": "Cinematic hero shot showcasing the reference product image. Dramatic lighting, elegant composition, premium aesthetic. The actual perfume bottle from the reference image takes center stage. {chosen_style} aesthetic. This builds anticipation for the final brand moment.",
+    "use_product": true,  # MANDATORY for second-to-last scene - this is the hero shot
+    "use_logo": false,  # Logo comes in last scene
+    "product_position": "center",
+    "product_scale": 0.6,
+    "camera_movement": "slow_zoom_in",  # Builds focus on product
+    "transition_to_next": "fade",
+    "overlay": {{
+      "text": "",  # No text in hero shot - save for last scene
+      "position": "bottom",
+      "duration": 0,
+      "font_size": 48,
+      "color": "{brand_colors[0] if brand_colors else '#FFFFFF'}",
+      "animation": "fade_in"
+    }}
+  }},
   {{
     "scene_id": {scene_count - 1},
     "shot_type": "brand_moment",
-    "shot_variation": "product_centered_minimal",
+    "shot_variation": "logo_with_text",
     "role": "cta",
     "duration": 6,  # MUST be 3-8 seconds (max 8s)
-    "background_prompt": "Elegant final moment that RESOLVES the story. Clean minimalist setting with the perfume bottle as the hero. Slow zoom out creates sense of completion. {chosen_style} aesthetic. This should feel like a natural conclusion to the narrative, not an abrupt cut-off.",
-    "use_product": true,  # MANDATORY for last scene - this is the resolution
-    "use_logo": true,  # Optional but recommended for brand presence
-    "product_position": "center",
-    "product_scale": 0.5,
+    "background_prompt": "Elegant final moment with brand logo as the host element. Clean minimalist setting, premium aesthetic. Logo prominently displayed. Animated text overlay with perfume name and brand name. {chosen_style} aesthetic. This should feel like a natural conclusion to the narrative with strong brand presence.",
+    "use_product": false,  # Optional - logo + text are primary focus
+    "use_logo": true,  # MANDATORY for last scene - logo is the host
+    "logo_position": "center",  # Logo is the primary element
+    "logo_scale": 0.3,
     "camera_movement": "slow_zoom_out",  # MANDATORY for last scene - feels like ending
     "transition_to_next": "fade",  # MANDATORY for last scene - smooth completion
     "overlay": {{
       "text": "{perfume_name}\\n{brand_name}",  # MANDATORY for last scene
       "position": "bottom",
-      "duration": 3.0,
-      "font_size": 48,
+      "duration": 4.0,  # Longer duration for final text
+      "font_size": 52,  # Slightly larger for impact
       "color": "{brand_colors[0] if brand_colors else '#FFFFFF'}",
-      "animation": "fade_in"
+      "animation": "fade_in"  # MUST have animation - not static
     }}
   }}
 ]
@@ -959,13 +1074,34 @@ Return ONLY valid JSON array with {scene_count} scene objects:
 - User's creative vision = PRIMARY (honor their concept)
 - NARRATIVE FLOW = CRITICAL (all scenes must connect as one story)
 - Grammar = SECONDARY (inform execution style, not content)
-- LAST SCENE MUST:
-  * use_product: true (always)
-  * Include text overlay with "{perfume_name}" + "{brand_name}"
-  * camera_movement: "slow_zoom_out"
-  * transition_to_next: "fade"
-  * Feel like natural completion, not cut-off
-- Set use_product/use_logo based on NARRATIVE NEED, not arbitrary rules
+
+- SECOND-TO-LAST SCENE (scene {scene_count - 2}) MUST:
+  * use_product: true (MANDATORY - this is the reference image hero shot)
+  * Showcase the actual product from reference image beautifully
+  * Build anticipation for final brand moment
+
+- LAST SCENE (scene {scene_count - 1}) MUST:
+  * use_logo: true (MANDATORY - logo is the host element)
+  * Include ANIMATED text overlay with "{perfume_name}" + "{brand_name}" + additional text
+  * Text overlay MUST have animation (fade_in, slide, etc.) - NOT static
+  * camera_movement: "slow_zoom_out" (MANDATORY)
+  * transition_to_next: "fade" (MANDATORY)
+  * Feel like natural completion with brand presence
+
+- MIDDLE SCENES (all except second-to-last and last):
+  * Must have coherent story flow connecting together
+  * When product appears, it MUST be BLENDED and INTERACTING with story
+  * NOT just static hero shots - product should affect/respond to scene elements
+  * If ANY perfume bottle is shown, it MUST be the reference product image
+  * DO NOT generate random perfume bottles
+
+- REFERENCE PRODUCT IMAGE RULE:
+  * The product reference image is the ONLY perfume that should appear
+  * When use_product=true, Veo 3.1 will receive the reference product image
+  * Describe scenes to naturally incorporate this specific product
+  * Never describe generic or random perfume bottles
+
+- Set use_product/use_logo based on NARRATIVE NEED and MANDATORY STRUCTURE
 - Ensure all scenes flow together as one cohesive story
 
 ✅ GENERATE NOW - BRING USER'S VISION TO LIFE!"""
