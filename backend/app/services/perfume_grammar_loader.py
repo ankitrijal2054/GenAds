@@ -184,13 +184,21 @@ class PerfumeGrammarLoader:
         for i, scene in enumerate(scenes):
             shot_type = scene.get("shot_type")
             duration = scene.get("duration", 0)
+            is_second_to_last = (i == len(scenes) - 2)
+            is_last = (i == len(scenes) - 1)
 
             # Check shot type is valid
-            if shot_type not in shot_types:
-                violations.append(
-                    f"Scene {i+1}: Invalid shot_type '{shot_type}'. "
-                    f"Must be one of: {', '.join(shot_types)}"
-                )
+            # RELAXED: Allow "story" or "custom" shot types for story scenes (user-driven content)
+            # Only enforce grammar shot types for hero shot (second-to-last) and logo outro (last)
+            allowed_story_types = ["story", "custom", "narrative", "user_story"]
+            if shot_type not in shot_types and shot_type not in allowed_story_types:
+                # Only warn, don't reject - user's creative vision takes priority
+                # Still reject for hero/logo scenes which have specific requirements
+                if is_second_to_last or is_last:
+                    violations.append(
+                        f"Scene {i+1}: Invalid shot_type '{shot_type}'. "
+                        f"Must be one of: {', '.join(shot_types)}"
+                    )
 
             # Check duration is in valid range
             if duration < 3 or duration > 8:

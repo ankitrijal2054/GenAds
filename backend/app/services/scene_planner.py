@@ -940,30 +940,28 @@ VEO 3.1 REFERENCE IMAGE INTEGRATION (CRITICAL):
 
 MANDATORY STRUCTURE (CRITICAL - FOLLOW EXACTLY):
 
-1. STORY SCENES (All scenes EXCEPT second-to-last and last): SMOOTH NARRATIVE FLOW
-   ⚠️ CRITICAL: Story scenes MUST DIRECTLY implement the USER'S CREATIVE PROMPT above!
-   - DO NOT use generic templates - READ THE USER'S CREATIVE VISION and bring IT to life
-   - If user says "midnight garden" → create midnight garden scenes
-   - If user says "ocean waves" → create ocean scenes
-   - If user says "romantic dinner" → create romantic dinner scenes
-   - THE USER'S PROMPT IS THE STORY - your job is to visualize THEIR vision
+1. STORY SCENES (All scenes EXCEPT second-to-last and last): USER'S CREATIVE VISION
+   ⚠️ CRITICAL: These scenes ARE the user's creative prompt brought to life!
 
-   - Duration: 4-8 seconds each (based on story demands)
-   - Product integration must be INTERACTIVE and NATURAL (when it fits the story):
-     * Hand SPRAYING the perfume as part of the narrative
-     * Someone PICKING UP the bottle in context
-     * Applying fragrance as story moment
-     * Holding bottle while in the scene setting
-   - NEVER show product as static hero shot in story scenes
-   - Product should blend into THE USER'S STORY naturally
-   - Each scene must advance THE USER'S NARRATIVE
-   - Use COMPLEX CINEMATOGRAPHY:
-     * Dolly shots following the action
-     * Crane movements revealing the scene
-     * Rack focus between elements
-     * Tracking shots with smooth gimbal movement
-     * Dynamic camera angles that enhance storytelling
-   - Visual continuity across all story scenes (lighting, colors, mood)
+   shot_type: "story" (DO NOT use grammar shot types for story scenes!)
+
+   🎯 YOUR JOB: Read the USER'S CREATIVE PROMPT above and CREATE EXACTLY THAT
+   - User says "midnight garden" → You create midnight garden scene
+   - User says "ocean waves" → You create ocean waves scene
+   - User says "romantic Paris" → You create romantic Paris scene
+   - User says "mystical forest" → You create mystical forest scene
+
+   The perfume grammar is ONLY for cinematography style (lighting, camera), NOT content!
+
+   - Duration: 4-8 seconds each
+   - Product appears naturally in THE USER'S SETTING (when appropriate):
+     * In a midnight garden → bottle among flowers in moonlight
+     * At ocean → bottle on sand with waves
+     * In Paris → bottle on cafe table
+   - NEVER use generic "vanity table" or "silk fabric" unless USER asked for it
+   - Each scene advances THE USER'S STORY
+   - Use COMPLEX CINEMATOGRAPHY: dolly, crane, rack focus, tracking, gimbal
+   - Visual continuity (lighting, colors, mood from USER'S concept)
 
 2. SECOND-TO-LAST scene (scene {scene_count - 2}): HERO SHOT + ANIMATED TEXT OVERLAY
    - Duration: 4-6 seconds (STRICT)
@@ -1036,12 +1034,12 @@ Return ONLY valid JSON array with {scene_count} scene objects:
 [
   {{
     "scene_id": 0,
-    "shot_type": "{allowed_ids[0]}",
-    "shot_variation": "story_opening",
+    "shot_type": "story",  # USE "story" FOR ALL USER-DRIVEN SCENES
+    "shot_variation": "from_user_prompt",
     "role": "hook",
     "duration": 6,  # STORY SCENES: 4-8 seconds
-    "background_prompt": "[DIRECTLY FROM USER'S CREATIVE PROMPT] - Opening scene that brings the USER'S specific creative vision to life. Describe the exact scene/setting/mood from their prompt. Dolly-in camera, volumetric lighting, {chosen_style} aesthetic. If user mentions a location, mood, or concept - USE IT HERE. Complex cinematography.",
-    "use_product": true,  # INTERACTIVE product usage when it fits the story
+    "background_prompt": "[EXACTLY WHAT USER ASKED FOR] - Read their creative prompt and create THIS scene. Example: if user says 'romantic Paris evening' → describe romantic Paris evening with cinematic quality. {chosen_style} aesthetic. Complex cinematography (dolly, crane, tracking). DO NOT USE GENERIC TEMPLATES.",
+    "use_product": true,  # Product appears naturally in the story when appropriate
     "use_logo": false,
     "product_position": "center",
     "product_scale": 0.5,
@@ -1056,7 +1054,7 @@ Return ONLY valid JSON array with {scene_count} scene objects:
       "animation": "none"
     }}
   }},
-  ... (MORE STORY scenes that CONTINUE the USER'S narrative - each scene advances THEIR story with interactive product moments) ...
+  ... (MORE "story" scenes that bring USER'S CREATIVE VISION to life - each scene is from THEIR prompt, not generic perfume templates) ...
   {{
     "scene_id": {scene_count - 2},
     "shot_type": "macro_bottle",
@@ -1104,18 +1102,21 @@ Return ONLY valid JSON array with {scene_count} scene objects:
 ]
 
 ⚠️ CRITICAL REMINDERS:
-- shot_type must be one of: {', '.join(allowed_ids)}
 - User's creative vision = PRIMARY (honor their concept)
 - NARRATIVE FLOW = CRITICAL (all scenes must connect as one story)
-- Grammar = SECONDARY (inform execution style, not content)
+- Grammar = REFERENCE ONLY (inform cinematography style, NOT content)
 
 - STORY SCENES (all except second-to-last and last):
-  * ⚠️ MUST DIRECTLY implement USER'S CREATIVE PROMPT - not generic scenes!
+  * shot_type: USE "story" (NOT grammar shot types like macro_bottle!)
+  * ⚠️ MUST DIRECTLY implement USER'S CREATIVE PROMPT - NOT generic templates!
+  * READ what user wrote and CREATE THAT - if they say "beach sunset", make beach sunset
   * Duration: 4-8 seconds each
-  * Create scenes based on THEIR specific vision/concept/setting
-  * INTERACTIVE product usage when it fits the story (spraying, picking up, holding)
-  * NEVER static hero shots - product blends into the narrative
+  * Product blends naturally into THE USER'S STORY (not forced perfume shots)
   * Complex cinematography (dolly, crane, tracking, rack focus)
+
+- ONLY THESE SCENES USE GRAMMAR SHOT TYPES:
+  * Second-to-last (hero shot): shot_type = "macro_bottle"
+  * Last (logo outro): shot_type = "brand_moment"
 
 - SECOND-TO-LAST SCENE (scene {scene_count - 2}) - HERO SHOT:
   * Duration: 4-6 seconds (STRICT)
