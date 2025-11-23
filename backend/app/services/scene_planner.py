@@ -1310,15 +1310,16 @@ Follow user's vision FIRST, grammar rules SECOND."""
         
         # Template for 3 scenes (15-30s)
         # Structure: Story (4-8s) → Hero+Text (4-6s) → Logo Outro (2-4s)
+        # NOTE: Fallback uses SAFE atmospheric prompts (no people) to avoid content filters
         if scene_count <= 3:
             return [
                 {
                     "scene_id": 0,
-                    "shot_type": "macro_bottle",
-                    "shot_variation": "interactive_spray",
+                    "shot_type": "story",
+                    "shot_variation": "atmospheric_opening",
                     "role": "hook",
                     "duration": max(4, min(8, target_duration - 9)),  # Story scene: 4-8s
-                    "background_prompt": f"Cinematic story opening. Elegant hand reaches for perfume bottle, picks it up gracefully, and sprays. Dolly-in camera following action, volumetric lighting, {style} aesthetic. Complex cinematography with crane movement and rack focus.",
+                    "background_prompt": f"Cinematic atmospheric opening. Perfume bottle catches morning light on elegant marble surface. Golden rays stream through, creating beautiful caustics. Dolly-in camera, volumetric lighting, {style} aesthetic. Soft particles float in the air.",
                     "use_product": True,
                     "product_position": "center",
                     "product_scale": 0.5,
@@ -1366,15 +1367,16 @@ Follow user's vision FIRST, grammar rules SECOND."""
         
         # Template for 4-5 scenes (31-45s)
         # Structure: Story scenes (4-8s each) → Hero+Text (4-6s) → Logo Outro (2-4s)
+        # NOTE: Fallback uses SAFE atmospheric prompts (no people) to avoid content filters
         elif scene_count <= 5:
             return [
                 {
                     "scene_id": 0,
-                    "shot_type": "macro_bottle",
-                    "shot_variation": "interactive_pickup",
+                    "shot_type": "story",
+                    "shot_variation": "atmospheric_opening",
                     "role": "hook",
                     "duration": 6,  # Story scene: 4-8s
-                    "background_prompt": f"Cinematic story opening. Hand elegantly reaches for the perfume bottle on a vanity. Dolly-in following the motion, volumetric morning light through window, {style} aesthetic. Complex crane movement as hand picks up bottle.",
+                    "background_prompt": f"Cinematic atmospheric opening. Perfume bottle rests on elegant surface as morning light streams through. Dolly-in revealing the bottle, volumetric lighting with dust particles, {style} aesthetic. Soft golden rays create beautiful atmosphere.",
                     "use_product": True,
                     "product_position": "center",
                     "product_scale": 0.5,
@@ -1384,11 +1386,11 @@ Follow user's vision FIRST, grammar rules SECOND."""
                 },
                 {
                     "scene_id": 1,
-                    "shot_type": "aesthetic_broll",
-                    "shot_variation": "spray_application",
+                    "shot_type": "story",
+                    "shot_variation": "fragrance_mist",
                     "role": "build",
                     "duration": 7,  # Story scene: 4-8s
-                    "background_prompt": f"Story continues. Person sprays perfume on wrist in elegant motion. Tracking shot following the spray mist, soft diffused lighting, {style} mood. Rack focus from bottle to mist particles.",
+                    "background_prompt": f"Elegant spray mist catches light, golden particles suspended in air. Tracking shot following the fragrance trail, soft diffused lighting, {style} mood. Rack focus through the shimmering mist particles.",
                     "use_product": True,
                     "product_position": "center",
                     "product_scale": 0.4,
@@ -1398,11 +1400,11 @@ Follow user's vision FIRST, grammar rules SECOND."""
                 },
                 {
                     "scene_id": 2,
-                    "shot_type": "atmospheric",
-                    "shot_variation": "fragrance_atmosphere",
+                    "shot_type": "story",
+                    "shot_variation": "atmospheric_buildup",
                     "role": "showcase",
                     "duration": 7,  # Story scene: 4-8s
-                    "background_prompt": f"Story builds. Elegant fragrance mist catches golden light rays, creating dreamy atmosphere. Gimbal smooth movement through scented air, {style} aesthetic. Soft bokeh with floating light particles.",
+                    "background_prompt": f"Dreamy atmosphere as fragrance mist catches golden light rays. Gimbal smooth movement through the scented air, {style} aesthetic. Soft bokeh with floating light particles and subtle lens flares.",
                     "use_product": False,
                     "camera_movement": "slow_zoom_in",
                     "transition_to_next": "fade",
@@ -1447,16 +1449,17 @@ Follow user's vision FIRST, grammar rules SECOND."""
             ]
         # Template for 7-9 scenes (60s videos)
         # Structure: Story scenes (4-8s each) → Hero+Text (4-6s) → Logo Outro (2-4s)
+        # NOTE: Fallback uses SAFE atmospheric prompts (no people) to avoid content filters
         else:
-            # Base template for 7 scenes
+            # Base template for 7 scenes - all SAFE atmospheric shots
             scenes = [
                 {
                     "scene_id": 0,
-                    "shot_type": "macro_bottle",
-                    "shot_variation": "interactive_pickup",
+                    "shot_type": "story",
+                    "shot_variation": "atmospheric_opening",
                     "role": "hook",
                     "duration": 7,  # Story scene: 4-8s
-                    "background_prompt": f"Cinematic story opening. Elegant hand reaches for perfume bottle on vanity. Dolly-in following the action, volumetric morning light, {style} aesthetic. Complex crane movement as hand picks up bottle gracefully.",
+                    "background_prompt": f"Cinematic atmospheric opening. Perfume bottle catches first morning light on marble surface. Dolly-in revealing the bottle, volumetric golden rays, {style} aesthetic. Dust particles float elegantly in the light.",
                     "use_product": True,
                     "product_position": "center",
                     "product_scale": 0.5,
@@ -1466,11 +1469,11 @@ Follow user's vision FIRST, grammar rules SECOND."""
                 },
                 {
                     "scene_id": 1,
-                    "shot_type": "aesthetic_broll",
-                    "shot_variation": "spray_application",
+                    "shot_type": "story",
+                    "shot_variation": "fragrance_mist",
                     "role": "build",
                     "duration": 8,  # Story scene: 4-8s
-                    "background_prompt": f"Story continues. Person elegantly sprays perfume on neck. Tracking shot following spray mist, soft diffused lighting, {style} mood. Rack focus from bottle to golden mist particles.",
+                    "background_prompt": f"Elegant fragrance spray creates golden mist. Tracking shot following the shimmering particles, soft diffused lighting, {style} mood. Rack focus through the sparkling mist trail.",
                     "use_product": True,
                     "product_position": "center",
                     "product_scale": 0.4,
@@ -1480,11 +1483,11 @@ Follow user's vision FIRST, grammar rules SECOND."""
                 },
                 {
                     "scene_id": 2,
-                    "shot_type": "atmospheric",
-                    "shot_variation": "fragrance_atmosphere",
+                    "shot_type": "story",
+                    "shot_variation": "light_atmosphere",
                     "role": "showcase",
                     "duration": 7,  # Story scene: 4-8s
-                    "background_prompt": f"Story builds. Elegant fragrance mist catches golden light rays streaming through window. Gimbal smooth movement through scented air, {style} aesthetic. Soft bokeh with floating particles.",
+                    "background_prompt": f"Dreamy atmosphere as golden light rays stream through. Gimbal smooth movement through the luminous air, {style} aesthetic. Soft bokeh with floating particles and gentle lens flares.",
                     "use_product": False,
                     "camera_movement": "slow_zoom_in",
                     "transition_to_next": "fade",
@@ -1492,11 +1495,11 @@ Follow user's vision FIRST, grammar rules SECOND."""
                 },
                 {
                     "scene_id": 3,
-                    "shot_type": "macro_bottle",
-                    "shot_variation": "bottle_placement",
+                    "shot_type": "story",
+                    "shot_variation": "bottle_reveal",
                     "role": "build",
                     "duration": 8,  # Story scene: 4-8s
-                    "background_prompt": f"Story continues. Hand gracefully places perfume bottle back on elegant surface. Crane shot descending, light rays through window, {style} aesthetic. Product settles into beautiful composition.",
+                    "background_prompt": f"Perfume bottle revealed through parting mist. Crane shot descending, light rays creating halo effect, {style} aesthetic. Product emerges into beautiful dramatic composition.",
                     "use_product": True,
                     "product_position": "center",
                     "product_scale": 0.5,
@@ -1506,11 +1509,11 @@ Follow user's vision FIRST, grammar rules SECOND."""
                 },
                 {
                     "scene_id": 4,
-                    "shot_type": "aesthetic_broll",
-                    "shot_variation": "getting_ready",
+                    "shot_type": "story",
+                    "shot_variation": "luxury_atmosphere",
                     "role": "build",
                     "duration": 7,  # Story scene: 4-8s
-                    "background_prompt": f"Story progresses. Person finishes getting ready, confident and elegant. Dolly out revealing full scene, soft natural lighting, {style} mood. Sense of anticipation and elegance.",
+                    "background_prompt": f"Luxurious scene unfolds with silk fabric flowing near the bottle. Dolly out revealing elegant setting, soft natural lighting, {style} mood. Sense of sophistication and elegance.",
                     "use_product": False,
                     "camera_movement": "dolly_out",
                     "transition_to_next": "fade",
@@ -1555,14 +1558,15 @@ Follow user's vision FIRST, grammar rules SECOND."""
             ]
 
             # Add extra STORY scenes for 8-9 scene counts (insert before hero shot)
+            # NOTE: Using SAFE atmospheric prompts (no people)
             if scene_count >= 8:
                 scenes.insert(5, {
                     "scene_id": 5,
-                    "shot_type": "atmospheric",
-                    "shot_variation": "final_moment",
+                    "shot_type": "story",
+                    "shot_variation": "dramatic_atmosphere",
                     "role": "proof",
                     "duration": 7,  # Story scene: 4-8s
-                    "background_prompt": f"Story climax. Person walks confidently, fragrance trailing. Tracking shot following movement, dramatic lighting, {style} premium aesthetic. Sense of empowerment.",
+                    "background_prompt": f"Dramatic atmosphere builds. Fragrance mist swirls through dramatic light beams. Tracking shot following the ethereal movement, {style} premium aesthetic. Sense of luxury and elegance.",
                     "use_product": False,
                     "camera_movement": "tracking",
                     "transition_to_next": "fade",
@@ -1575,11 +1579,11 @@ Follow user's vision FIRST, grammar rules SECOND."""
             if scene_count == 9:
                 scenes.insert(6, {
                     "scene_id": 6,
-                    "shot_type": "macro_bottle",
+                    "shot_type": "story",
                     "shot_variation": "bottle_detail",
                     "role": "build",
                     "duration": 7,  # Story scene: 4-8s
-                    "background_prompt": f"Story detail. Close-up of perfume bottle catching light, golden reflections dancing. Rack focus through bottle glass, {style} mood. Premium craftsmanship highlighted.",
+                    "background_prompt": f"Exquisite detail shot. Close-up of perfume bottle catching light, golden reflections dancing across the glass. Rack focus revealing craftsmanship, {style} mood. Premium luxury highlighted.",
                     "use_product": True,
                     "product_position": "center",
                     "product_scale": 0.6,
