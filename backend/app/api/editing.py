@@ -627,7 +627,7 @@ async def export_manual_edit_upload(
                 campaign_json['variationPaths'][f'variation_{variation_index}'] = {
                     'aspectExports': {}
                 }
-            campaign_json['variationPaths'][f'variation_{variation_index}']['aspectExports']['9:16'] = new_final_video_url
+            campaign_json['variationPaths'][f'variation_{variation_index}']['aspectExports']['16:9'] = new_final_video_url
             
             # Add edit history record
             if 'edit_history' not in campaign_json:

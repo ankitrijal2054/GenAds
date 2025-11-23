@@ -4,7 +4,7 @@ VEO 3.1 FEATURES:
 - Reference image support (product/logo integration via reference_images array)
 - Enhanced prompts with reference image usage instructions
 - Natural product/text integration
-- 720p/1080p resolution, 24 fps, 9:16 aspect ratio (TikTok vertical)
+- 720p/1080p resolution, 24 fps, 16:9 aspect ratio (horizontal/landscape)
 - Duration options: 4, 6, or 8 seconds per scene
 - MP4 format with H.264/H.265 encoding
 
@@ -14,7 +14,7 @@ VEO 3.1 API PARAMETERS:
 - prompt: Text description with reference image usage instructions
 - duration: 4, 6, or 8 seconds (mapped from scene duration)
 - resolution: "720p" or "1080p"
-- aspect_ratio: "9:16" (TikTok vertical)
+- aspect_ratio: "16:9" (horizontal/landscape)
 - fps: 24 (cinematic frame rate)
 - generate_audio: False (we generate audio separately)
 - reference_images: Array of image URLs (http/https) for product/logo integration
@@ -77,7 +77,7 @@ class VideoGenerator:
         use_logo: bool = False,
     ) -> str:
         """
-        Generate background video for a scene using Veo 3.1 (TikTok vertical 9:16).
+        Generate background video for a scene using Veo 3.1 (horizontal 16:9).
         
         When reference images are provided, the prompt is enhanced to describe how
         they should be integrated into the scene.
@@ -96,7 +96,7 @@ class VideoGenerator:
         Returns:
             URL of generated video from Replicate
         """
-        logger.info(f"Generating TikTok vertical video with Veo 3.1: {prompt[:60]}...")
+        logger.info(f"Generating horizontal video with Veo 3.1: {prompt[:60]}...")
         if use_product and product_image_url:
             logger.info(f"📦 Product image available for integration: {product_image_url[:80]}...")
         if use_logo and logo_image_url:
@@ -113,11 +113,11 @@ class VideoGenerator:
                 use_logo=use_logo,
             )
 
-            # Create prediction via HTTP API (hardcoded 9:16 for TikTok vertical)
+            # Create prediction via HTTP API (hardcoded 16:9 for horizontal)
             prediction_data = await self._create_prediction(
                 enhanced_prompt, 
                 int(duration), 
-                "9:16",
+                "16:9",
                 product_image_url=product_image_url if use_product else None,
                 logo_image_url=logo_image_url if use_logo else None,
             )
@@ -281,7 +281,7 @@ class VideoGenerator:
         self, 
         prompt: str, 
         duration: int, 
-        aspect_ratio: str = "9:16",
+        aspect_ratio: str = "16:9",
         product_image_url: Optional[str] = None,
         logo_image_url: Optional[str] = None,
     ) -> dict:
@@ -291,7 +291,7 @@ class VideoGenerator:
         Args:
             prompt: Text prompt with reference image usage instructions
             duration: Video duration in seconds (mapped to 4, 6, or 8)
-            aspect_ratio: Video aspect ratio (9:16 for TikTok vertical)
+            aspect_ratio: Video aspect ratio (16:9 for horizontal)
             product_image_url: URL of product image (for reference image integration)
             logo_image_url: URL of logo image (for reference image integration)
             
@@ -318,7 +318,7 @@ class VideoGenerator:
                 "prompt": prompt,
                 "duration": veo_duration,
                 "resolution": "720p",  # Veo 3.1 supports 720p and 1080p
-                "aspect_ratio": "9:16",  # Hardcoded TikTok vertical
+                "aspect_ratio": "16:9",  # Hardcoded horizontal
                 "fps": 24,  # Cinematic frame rate
                 "generate_audio": False,  # We generate audio separately via MusicGen
             }
@@ -458,7 +458,7 @@ class VideoGenerator:
         logo_image_url: Optional[str] = None,
     ) -> list:
         """
-        Generate multiple scene videos concurrently using Veo 3.1 (TikTok vertical 9:16).
+        Generate multiple scene videos concurrently using Veo 3.1 (horizontal 16:9).
 
         Args:
             prompts: List of scene prompts
@@ -473,7 +473,7 @@ class VideoGenerator:
         Returns:
             List of video URLs
         """
-        logger.info(f"Generating {len(prompts)} TikTok vertical scene videos in parallel...")
+        logger.info(f"Generating {len(prompts)} horizontal scene videos in parallel...")
 
         try:
             tasks = []

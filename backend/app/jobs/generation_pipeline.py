@@ -6,7 +6,7 @@ This module contains the main generation pipeline that orchestrates all services
 2. Scene Planning (LLM-based with USER-FIRST philosophy + perfume grammar)
 3. Video Generation (Veo S3 with product + text integrated natively)
 4. Audio Generation (luxury ambient music)
-5. Final Rendering (TikTok vertical 9:16 only)
+5. Final Rendering (horizontal 16:9 only)
 
 REMOVED STEPS (Veo S3 handles natively):
 - ❌ Compositing (product overlay) - Veo integrates product naturally
@@ -16,7 +16,7 @@ PERFUME-SPECIFIC FEATURES:
 - User-first creative approach (user vision = primary, grammar = secondary)
 - Perfume shot grammar as visual language library (not strict rules)
 - Perfume name extraction and storage
-- TikTok vertical optimization (9:16 hardcoded)
+- Horizontal optimization (16:9 hardcoded)
 
 S3-FIRST ARCHITECTURE:
 - Inputs (guidelines, logo, products) fetched from S3
@@ -279,9 +279,9 @@ class GenerationPipeline:
             
             # Build message indicating partial success if applicable
             if failed_variations:
-                message = f"{actual_num_variations} TikTok vertical video variations ready for preview ({len(failed_variations)} variation(s) failed due to API timeout)."
+                message = f"{actual_num_variations} horizontal video variations ready for preview ({len(failed_variations)} variation(s) failed due to API timeout)."
             else:
-                message = f"{actual_num_variations} TikTok vertical video variations ready for preview."
+                message = f"{actual_num_variations} horizontal video variations ready for preview."
             
             return {
                 "status": "COMPLETED",
@@ -703,8 +703,8 @@ BRAND GUIDELINES (extracted from guidelines document):
             logo_url = self.brand.brand_logo_url if self.brand and self.brand.brand_logo_url else None
             has_logo = logo_url is not None
             
-            # Generate TikTok vertical videos (9:16 hardcoded)
-            logger.info("Generating TikTok vertical videos (9:16)")
+            # Generate horizontal videos (16:9 hardcoded)
+            logger.info("Generating horizontal videos (16:9)")
             logger.info(f"📦 Assets available - Product: {has_product} ({product_url[:80] if product_url else 'N/A'}...), Logo: {has_logo}")
 
             # Log scene scripts and reference image usage
@@ -889,7 +889,7 @@ BRAND GUIDELINES (extracted from guidelines document):
         progress_start: int = 85,
         variation_index: int = None,
     ) -> str:
-        """Render final TikTok vertical video (9:16 only)."""
+        """Render final horizontal video (16:9 only)."""
         try:
             update_campaign(
                 self.db, self.campaign_id, status="processing", progress=progress_start
@@ -903,7 +903,7 @@ BRAND GUIDELINES (extracted from guidelines document):
                 aws_region=settings.aws_region,
             )
             
-            # Render final TikTok vertical video (9:16 hardcoded)
+            # Render final horizontal video (16:9 hardcoded)
             final_video_path = await renderer.render_final_video(
                 scene_video_urls=scene_videos,
                 audio_url=audio_url,
@@ -915,7 +915,7 @@ BRAND GUIDELINES (extracted from guidelines document):
                 self.db, self.campaign_id, status="processing", progress=100
             )
 
-            logger.info(f"✅ Rendered final TikTok vertical video: {final_video_path}")
+            logger.info(f"✅ Rendered final horizontal video: {final_video_path}")
             return final_video_path
 
         except Exception as e:
@@ -987,7 +987,7 @@ BRAND GUIDELINES (extracted from guidelines document):
     async def _save_final_video_locally(
         self, s3_video_url: str
     ) -> str:
-        """Download final TikTok vertical video from S3 and save to local storage.
+        """Download final horizontal video from S3 and save to local storage.
         
         Args:
             s3_video_url: S3 URL of the rendered video
@@ -999,14 +999,14 @@ BRAND GUIDELINES (extracted from guidelines document):
             import requests
             import os
             
-            logger.info("Downloading TikTok vertical (9:16) video from S3...")
+            logger.info("Downloading horizontal (16:9) video from S3...")
             
             response = requests.get(s3_video_url, timeout=300)
             response.raise_for_status()
             
             local_path = LocalStorageManager.save_final_video(
                 self.campaign_id,
-                "9:16",  # Hardcoded TikTok vertical
+                "16:9",  # Hardcoded horizontal
                 None
             )
             
@@ -1016,7 +1016,7 @@ BRAND GUIDELINES (extracted from guidelines document):
                 f.write(response.content)
             
             file_size = os.path.getsize(local_path)
-            logger.info(f"Saved TikTok vertical (9:16) ({file_size / 1024 / 1024:.1f} MB) to {local_path}")
+            logger.info(f"Saved horizontal (16:9) ({file_size / 1024 / 1024:.1f} MB) to {local_path}")
             
             return local_path
             
@@ -1437,12 +1437,12 @@ BRAND GUIDELINES (extracted from guidelines document):
             logger.info(f"🔍 Final videos to store: {final_videos}")
             
             # Store S3 URLs in variationPaths with correct structure for API
-            # Format: {"variation_0": {"aspectExports": {"9:16": "url"}}, ...}
+            # Format: {"variation_0": {"aspectExports": {"16:9": "url"}}, ...}
             variation_paths = {}
             for i, url in enumerate(final_videos):
                 variation_paths[f"variation_{i}"] = {
                     "aspectExports": {
-                        "9:16": url  # Only 9:16 supported for now
+                        "16:9": url  # Only 16:9 supported for now
                     }
                 }
             

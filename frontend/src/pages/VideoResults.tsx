@@ -91,7 +91,7 @@ export const VideoResults = () => {
       setVideoUrl('')
       
       // Reload video
-      const aspectRatio = isCampaign ? '9:16' : (data.aspect_ratio || '9:16')
+      const aspectRatio = isCampaign ? '16:9' : (data.aspect_ratio || '16:9')
       const { url: displayVideoPath, selectedIndex } = getDisplayVideo(
         data,
         aspectRatio as '9:16' | '1:1' | '16:9'
@@ -145,7 +145,7 @@ export const VideoResults = () => {
   ): { url: string | null; selectedIndex: number } => {
     if (isCampaign) {
       // Campaign structure: campaign_json.variationPaths
-      // Backend stores as object: {"variation_0": {"aspectExports": {"9:16": "url"}}, ...}
+      // Backend stores as object: {"variation_0": {"aspectExports": {"16:9": "url"}}, ...}
       // Handle case where campaign_json might be a string (JSONB serialization)
       let campaignJson = data?.campaign_json || {}
       if (typeof campaignJson === 'string') {
@@ -248,7 +248,7 @@ export const VideoResults = () => {
       if (isCampaign) {
         // Campaign download endpoint
         const variationParam = variationIndex !== undefined ? `?variation=${variationIndex}` : ''
-        return `${API_BASE_URL}/api/generation/campaigns/${entityId}/download/9:16${variationParam}`
+        return `${API_BASE_URL}/api/generation/campaigns/${entityId}/download/16:9${variationParam}`
       } else {
         // Project preview endpoint
       const variationParam = variationIndex !== undefined ? `?variation=${variationIndex}` : ''
@@ -318,8 +318,8 @@ export const VideoResults = () => {
         }
         setProject(data)
         
-        // Campaigns always use 9:16, projects can have different aspect ratios
-        const aspectRatio = isCampaign ? '9:16' : (data.aspect_ratio || '9:16')
+        // Campaigns always use 16:9, projects can have different aspect ratios
+        const aspectRatio = isCampaign ? '16:9' : (data.aspect_ratio || '16:9')
         setAspect(aspectRatio as '9:16' | '1:1' | '16:9')
         
         // Get the display video path (handles multi-variation selection)

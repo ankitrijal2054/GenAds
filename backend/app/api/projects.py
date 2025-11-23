@@ -70,7 +70,7 @@ async def create_new_project(
     - selected_style: (optional) Perfume video style - 'gold_luxe', 'dark_elegance', or 'romantic_floral'
     - num_variations: (optional) Number of video variations to generate (1-3, default: 1)
     
-    **Note:** Aspect ratio is hardcoded to 9:16 (TikTok vertical, 1080x1920) for all perfume ads.
+    **Note:** Aspect ratio is hardcoded to 16:9 (horizontal, 1920x1080) for all perfume ads.
     
     **Response:** ProjectResponse with newly created project
     
@@ -158,7 +158,7 @@ async def create_new_project(
             "style_spec": None,
             "scenes": [],
             "video_settings": {
-                "aspect_ratio": "9:16",  # Phase 9: Hardcoded TikTok vertical
+                "aspect_ratio": "16:9",  # Phase 9: Hardcoded horizontal
                 "resolution": "1080x1920",  # Phase 9: TikTok vertical resolution
                 "platform": "tiktok",  # Phase 9: Platform identifier
                 "fps": 30,
@@ -181,7 +181,7 @@ async def create_new_project(
             ad_project_json=ad_project_json,
             mood="",  # Deprecated, keeping for DB schema compatibility
             duration=request.target_duration,
-            aspect_ratio="9:16",  # Phase 9: Hardcoded TikTok vertical
+            aspect_ratio="16:9",  # Phase 9: Hardcoded horizontal
             selected_style=request.selected_style,  # PHASE 7: Store selected style
             perfume_name=request.perfume_name,  # Phase 9: Store perfume name
             perfume_gender=request.perfume_gender,  # Phase 9: Store perfume gender
@@ -211,7 +211,7 @@ async def create_new_project(
             "status": project.status,
             "progress": project.progress,
             "cost": float(project.cost) if project.cost else 0.0,
-            "aspect_ratio": getattr(project, 'aspect_ratio', '9:16'),  # Phase 9: Default to 9:16
+                "aspect_ratio": getattr(project, 'aspect_ratio', '16:9'),  # Phase 9: Default to 16:9
             "created_at": project.created_at,
             "updated_at": project.updated_at,
         })

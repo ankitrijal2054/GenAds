@@ -75,8 +75,8 @@ async def get_preview_video(
         # Check if videos are in local storage
         local_video_paths = project.local_video_paths or {}
         
-        # Get video path(s) for 9:16 aspect ratio (TikTok vertical)
-        video_paths = local_video_paths.get("9:16")
+        # Get video path(s) for 16:9 aspect ratio (horizontal)
+        video_paths = local_video_paths.get("16:9")
         
         # Fallback: Check local_video_path if local_video_paths is empty (backward compatibility)
         if not video_paths and project.local_video_path:

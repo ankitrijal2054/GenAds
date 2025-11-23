@@ -49,7 +49,7 @@ export function VideoSelection() {
     try {
       for (const variationIndex of variationIndices) {
         const response = await api.get(
-          `/api/generation/campaigns/${campaignData.campaign_id}/stream/9:16`,
+          `/api/generation/campaigns/${campaignData.campaign_id}/stream/16:9`,
           {
             responseType: 'blob',
             params: { variation_index: variationIndex },
@@ -100,7 +100,7 @@ export function VideoSelection() {
         
         if (isCampaign) {
           // Campaign structure: campaign_json.variationPaths
-          // Backend stores as object: {"variation_0": {"aspectExports": {"9:16": "url"}}, ...}
+          // Backend stores as object: {"variation_0": {"aspectExports": {"16:9": "url"}}, ...}
           // Handle case where campaign_json might be a string (JSONB serialization)
           let campaignJson = data?.campaign_json || {}
           if (typeof campaignJson === 'string') {
@@ -134,9 +134,9 @@ export function VideoSelection() {
           await fetchCampaignVariationBlobs(data, variationIndices)
           return
         } else {
-          // Project structure: local_video_paths["9:16"] as array when num_variations > 1
-        // OR in ad_project_json.local_video_paths["9:16"] 
-          videoPaths = data.local_video_paths?.['9:16'] || data.ad_project_json?.local_video_paths?.['9:16']
+          // Project structure: local_video_paths["16:9"] as array when num_variations > 1
+        // OR in ad_project_json.local_video_paths["16:9"] 
+          videoPaths = data.local_video_paths?.['16:9'] || data.ad_project_json?.local_video_paths?.['16:9']
         }
 
         console.log('📹 Video paths from', isCampaign ? 'campaign' : 'project', ':', videoPaths)
@@ -190,7 +190,7 @@ export function VideoSelection() {
           const urls: string[] = []
           for (let i = 0; i < numVariations; i++) {
             try {
-                const url = await getVideoURL(id, '9:16')
+                const url = await getVideoURL(id, '16:9')
               if (url && !urls.includes(url)) {
                 urls.push(url)
               }
@@ -380,7 +380,7 @@ export function VideoSelection() {
                 <div className="relative flex-1 flex items-center justify-center p-4">
                   <VideoPlayer
                     videoUrl={videoUrl}
-                    aspect="9:16"
+                    aspect="16:9"
                     title={`Option ${index + 1}`}
                     size="compact"
                   />

@@ -1,7 +1,7 @@
-"""Renderer Service - Final video rendering for TikTok vertical (9:16 only).
+"""Renderer Service - Final video rendering for horizontal (16:9 only).
 
 This service combines composited video scenes with audio and generates
-final TikTok vertical video (1080x1920).
+final horizontal video (1920x1080).
 """
 
 import logging
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 class Renderer:
-    """Renders final TikTok vertical video (9:16, 1080x1920)."""
+    """Renders final horizontal video (16:9, 1920x1080)."""
 
     def __init__(
         self,
@@ -48,7 +48,7 @@ class Renderer:
         variation_index: int = None,
     ) -> str:
         """
-        Render final TikTok vertical video (9:16, 1080x1920).
+        Render final horizontal video (16:9, 1920x1080).
 
         Args:
             scene_video_urls: List of URLs/paths of scene videos (in order)
@@ -58,7 +58,7 @@ class Renderer:
         Returns:
             Local file path of final video
         """
-        logger.info("Rendering final TikTok vertical video (9:16, 1080x1920)")
+        logger.info("Rendering final horizontal video (16:9, 1920x1080)")
 
         with tempfile.TemporaryDirectory() as tmpdir:
             try:
@@ -92,21 +92,21 @@ class Renderer:
                 else:
                     logger.info("No audio available, using concatenated video without audio")
 
-                # Render TikTok vertical (9:16, 1080x1920)
+                # Render horizontal (16:9, 1920x1080)
                 output_path = Path(tmpdir) / "final.mp4"
-                await self._apply_aspect_ratio(video_to_render, output_path, "9:16")
+                await self._apply_aspect_ratio(video_to_render, output_path, "16:9")
 
                 # Save to local storage
                 from app.utils.local_storage import LocalStorageManager
                 from uuid import UUID
                 local_path = LocalStorageManager.save_final_video(
                     UUID(project_id),
-                    "9:16",
+                    "16:9",
                     str(output_path),
                     variation_index=variation_index
                 )
 
-                logger.info(f"✅ Final TikTok vertical video rendered: {local_path}")
+                logger.info(f"✅ Final horizontal video rendered: {local_path}")
                 return local_path
 
             except Exception as e:
@@ -234,10 +234,10 @@ class Renderer:
             raise
 
     async def _apply_aspect_ratio(self, input_path: Path, output_path: Path, aspect_ratio: str):
-        """Apply TikTok vertical aspect ratio (9:16, 1080x1920) using FFmpeg with padding."""
+        """Apply horizontal aspect ratio (16:9, 1920x1080) using FFmpeg with padding."""
         try:
-            # TikTok vertical dimensions (hardcoded)
-            width, height = (1080, 1920)
+            # Horizontal dimensions (hardcoded)
+            width, height = (1920, 1080)
 
             # Use scale and pad to achieve aspect ratio
             # This ensures content isn't cropped, just padded

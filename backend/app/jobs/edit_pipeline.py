@@ -244,8 +244,8 @@ class SceneEditPipeline:
                     'aspectExports': {}
                 }
             
-            # Update the 9:16 aspect export with new URL
-            campaign_json['variationPaths'][f'variation_{variation_index}']['aspectExports']['9:16'] = new_final_video_url
+            # Update the 16:9 aspect export with new URL
+            campaign_json['variationPaths'][f'variation_{variation_index}']['aspectExports']['16:9'] = new_final_video_url
             
             logger.info(f"✅ Updated variationPaths with new final video URL for variation_{variation_index}")
             
@@ -482,7 +482,7 @@ class ManualEditExportPipeline:
                     campaign_json['variationPaths'][f'variation_{variation_index}'] = {
                         'aspectExports': {}
                     }
-                campaign_json['variationPaths'][f'variation_{variation_index}']['aspectExports']['9:16'] = new_final_video_url
+                campaign_json['variationPaths'][f'variation_{variation_index}']['aspectExports']['16:9'] = new_final_video_url
                 
                 # Add edit history record
                 if 'edit_history' not in campaign_json:

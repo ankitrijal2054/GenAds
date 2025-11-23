@@ -40,7 +40,7 @@ const formatCost = (cost: number | string | null | undefined): string => {
 
 export const CampaignCard = ({ campaign, onClick }: CampaignCardProps) => {
   // Get video thumbnail from campaign_json if available
-  // Backend stores as object: {"variation_0": {"aspectExports": {"9:16": "url"}}, ...}
+  // Backend stores as object: {"variation_0": {"aspectExports": {"16:9": "url"}}, ...}
   // Handle case where campaign_json might be a string (JSONB serialization)
   let campaignJson = campaign.campaign_json || {}
   if (typeof campaignJson === 'string') {
@@ -62,7 +62,7 @@ export const CampaignCard = ({ campaign, onClick }: CampaignCardProps) => {
     // Current object format
     const firstVariationKey = Object.keys(variationPaths).sort()[0]
     const firstVariation = variationPaths[firstVariationKey]
-    thumbnailUrl = firstVariation?.aspectExports?.['9:16'] 
+    thumbnailUrl = firstVariation?.aspectExports?.['16:9'] 
       || firstVariation?.final_video_url 
       || firstVariation?.video_url 
       || null

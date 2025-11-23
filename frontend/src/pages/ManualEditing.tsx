@@ -30,7 +30,7 @@ const initializeTimelineFromCampaign = async (
     const variationPaths = campaignJson.variationPaths || {}
     const variationPath = variationPaths[`variation_${variationIndex}`] || {}
     const aspectExports = variationPath.aspectExports || {}
-    const finalVideoUrl = aspectExports['9:16'] || aspectExports['16:9'] || null
+    const finalVideoUrl = aspectExports['16:9'] || aspectExports['9:16'] || null
     
     if (finalVideoUrl) {
       // Create single video clip for final video
