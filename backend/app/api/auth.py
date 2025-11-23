@@ -102,7 +102,11 @@ def get_current_user_id(authorization: str = Header(None)) -> UUID:
 
 
 def _ensure_user_exists(user_id: UUID, email: Optional[str] = None):
-    """Ensure user exists in auth.users table (syncs from Supabase)."""
+    """Ensure user exists in auth.users table (syncs from Supabase).
+    
+    Note: auth.users table is managed by Supabase Auth and only has 'id' column.
+    We only insert the user ID if it doesn't exist - no email or other fields.
+    """
     try:
         from app.database.connection import SessionLocal
         from sqlalchemy import text
@@ -120,20 +124,16 @@ def _ensure_user_exists(user_id: UUID, email: Optional[str] = None):
             ).fetchone()
             
             if not result:
-                # Create user (synced from Supabase)
+                # Create user with only ID (auth.users is managed by Supabase Auth, minimal schema)
+                # The auth.users table only has 'id' column - no email, created_at, etc.
                 db.execute(
-                    text("INSERT INTO auth.users (id, email, created_at) VALUES (:user_id, :email, NOW()) ON CONFLICT (id) DO NOTHING"),
-                    {"user_id": str(user_id), "email": email or "user@example.com"}
+                    text("INSERT INTO auth.users (id) VALUES (:user_id) ON CONFLICT (id) DO NOTHING"),
+                    {"user_id": str(user_id)}
                 )
                 db.commit()
                 logger.info(f"✅ Synced user {user_id} to local auth.users table")
-            elif email:
-                # Update email if provided and different
-                db.execute(
-                    text("UPDATE auth.users SET email = :email WHERE id = :user_id AND (email IS NULL OR email != :email)"),
-                    {"user_id": str(user_id), "email": email}
-                )
-                db.commit()
+            # Note: We don't update email since auth.users doesn't have that column
+            # Email is managed by Supabase Auth service, not our local table
         finally:
             db.close()
     except Exception as e:

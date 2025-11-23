@@ -49,7 +49,7 @@ export function VideoSelection() {
     try {
       for (const variationIndex of variationIndices) {
         const response = await api.get(
-          `/api/generation/campaigns/${campaignData.campaign_id}/stream/9:16`,
+          `/api/generation/campaigns/${campaignData.campaign_id}/stream/16:9`,
           {
             responseType: 'blob',
             params: { variation_index: variationIndex },
@@ -100,7 +100,7 @@ export function VideoSelection() {
         
         if (isCampaign) {
           // Campaign structure: campaign_json.variationPaths
-          // Backend stores as object: {"variation_0": {"aspectExports": {"9:16": "url"}}, ...}
+          // Backend stores as object: {"variation_0": {"aspectExports": {"16:9": "url"}}, ...}
           // Handle case where campaign_json might be a string (JSONB serialization)
           let campaignJson = data?.campaign_json || {}
           if (typeof campaignJson === 'string') {
@@ -134,9 +134,9 @@ export function VideoSelection() {
           await fetchCampaignVariationBlobs(data, variationIndices)
           return
         } else {
-          // Project structure: local_video_paths["9:16"] as array when num_variations > 1
-        // OR in ad_project_json.local_video_paths["9:16"] 
-          videoPaths = data.local_video_paths?.['9:16'] || data.ad_project_json?.local_video_paths?.['9:16']
+          // Project structure: local_video_paths["16:9"] as array when num_variations > 1
+        // OR in ad_project_json.local_video_paths["16:9"] 
+          videoPaths = data.local_video_paths?.['16:9'] || data.ad_project_json?.local_video_paths?.['16:9']
         }
 
         console.log('📹 Video paths from', isCampaign ? 'campaign' : 'project', ':', videoPaths)
@@ -190,7 +190,7 @@ export function VideoSelection() {
           const urls: string[] = []
           for (let i = 0; i < numVariations; i++) {
             try {
-                const url = await getVideoURL(id, '9:16')
+                const url = await getVideoURL(id, '16:9')
               if (url && !urls.includes(url)) {
                 urls.push(url)
               }
@@ -317,7 +317,7 @@ export function VideoSelection() {
       </div>
 
       {/* Navigation Header */}
-      <nav className="relative z-10 border-b border-charcoal-800/60 backdrop-blur-md bg-charcoal-900/70 sticky top-0">
+      <nav className="relative z-50 border-b border-charcoal-800/60 backdrop-blur-md bg-charcoal-900/40 sticky top-0">
         <div className="max-w-6xl mx-auto w-full px-4 py-4">
           <div className="flex items-center justify-between">
             <button
@@ -355,7 +355,13 @@ export function VideoSelection() {
         </motion.div>
 
         {/* Video Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-8 auto-rows-fr">
+        <div
+          className={`grid gap-5 mb-8 auto-rows-fr ${
+            videoUrls.length === 2
+              ? 'grid-cols-1 sm:grid-cols-2 max-w-4xl mx-auto'
+              : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
+          }`}
+        >
           {videoUrls.map((videoUrl, index) => (
             <motion.div
               key={index}
@@ -374,7 +380,7 @@ export function VideoSelection() {
                 <div className="relative flex-1 flex items-center justify-center p-4">
                   <VideoPlayer
                     videoUrl={videoUrl}
-                    aspect="9:16"
+                    aspect="16:9"
                     title={`Option ${index + 1}`}
                     size="compact"
                   />

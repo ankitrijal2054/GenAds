@@ -8,7 +8,7 @@ const Landing = () => {
   return (
     <div className="min-h-screen bg-olive-950 bg-gradient-hero">
       {/* Navigation */}
-      <nav className="border-b border-olive-600/50 backdrop-blur-md bg-olive-950/50 sticky top-0 z-50">
+      <nav className="relative z-50 border-b border-olive-600/50 backdrop-blur-md bg-olive-950/30 sticky top-0">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Sparkles className="h-6 w-6 text-gold" />
@@ -16,11 +16,18 @@ const Landing = () => {
               GenAds
             </span>
           </div>
-          <Link to="/signup">
-            <Button variant={"hero" as ButtonVariant} size="lg" className="transition-transform duration-200 hover:scale-105">
-              Get Started
-            </Button>
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link to="/login">
+              <Button variant="outline" size="lg" className="transition-transform duration-200 hover:scale-105">
+                Login
+              </Button>
+            </Link>
+            <Link to="/signup">
+              <Button variant={"hero" as ButtonVariant} size="lg" className="transition-transform duration-200 hover:scale-105">
+                Get Started
+              </Button>
+            </Link>
+          </div>
         </div>
       </nav>
 

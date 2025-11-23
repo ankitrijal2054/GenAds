@@ -57,3 +57,47 @@ export const api = apiClient
 
 export default apiClient
 
+// PHASE 3: Editing API endpoints
+export const editing = {
+  getScenes: (campaignId: string, variationIndex: number = 0) =>
+    api.get(`/api/campaigns/${campaignId}/scenes`, {
+      params: { variation_index: variationIndex }
+    }),
+  
+  editScene: (campaignId: string, sceneIndex: number, editPrompt: string) =>
+    api.post(`/api/campaigns/${campaignId}/scenes/${sceneIndex}/edit`, {
+      edit_prompt: editPrompt
+    }),
+  
+  getEditHistory: (campaignId: string) =>
+    api.get(`/api/campaigns/${campaignId}/edit-history`)
+}
+
+// PHASE 4: Manual Editing API endpoints
+export const manualEditing = {
+  getEditingScenes: (campaignId: string, variationIndex: number = 0) =>
+    api.get(`/api/campaigns/${campaignId}/editing/scenes`, {
+      params: { variation_index: variationIndex }
+    }),
+  
+  getEditingMusic: (campaignId: string, variationIndex: number = 0) =>
+    api.get(`/api/campaigns/${campaignId}/editing/music`, {
+      params: { variation_index: variationIndex }
+    }),
+  
+  exportEdit: (campaignId: string, timelineState: any) =>
+    api.post(`/api/campaigns/${campaignId}/editing/export`, {
+      timeline_state: timelineState
+    }),
+  
+  exportEditUpload: (campaignId: string, videoFile: Blob) => {
+    const formData = new FormData()
+    formData.append('file', videoFile, 'edited-video.mp4')
+    return api.post(`/api/campaigns/${campaignId}/editing/export-upload`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  }
+}
+

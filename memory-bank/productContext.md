@@ -308,5 +308,40 @@ User receives:
 
 ---
 
-**Last Updated:** November 18, 2025 (Multi-Variation Phase 5 Complete)
+### Next-Generation Feature: AI Scene Editing (January 20, 2025)
+
+Users can now edit individual scenes in their generated videos:
+- **Purpose:** Refine videos without regenerating entire campaign
+- **UX:** Click "Edit Scene" → Enter prompt → Wait ~3 minutes → Video updates
+- **Cost:** ~$0.21 per scene edit (only edited scene regenerated)
+- **Experience:** Integrated editing from video results page (no navigation)
+- **History:** Lightweight audit trail (edit count, cost, changes summary)
+- **Result:** Users can iterate on specific scenes without full regeneration
+
+This enables rapid iteration - users can refine individual scenes until perfect, rather than regenerating entire videos.
+
+### Next-Generation Feature: Manual Video Editing (January 20, 2025 - Implementation Complete ✅)
+
+Users can now manually edit videos using a timeline interface:
+- **Purpose:** Fine-grained control over scene arrangement, trimming, and audio
+- **UX:** Navigate to manual editing → Timeline loads with all scenes → Edit → Export
+- **Features:** Drag-and-drop reordering, trim scenes, split scenes, adjust volume
+- **Finalization:** Export sets `manual_editing_done = True`, removes draft files from S3
+- **Restriction:** Once finalized, no further editing possible (prompt-based or manual)
+- **Storage:** Only `final_video.mp4` remains after export (draft files cleaned up)
+- **Result:** Professional video editing workflow with campaign finalization
+
+**Implementation Status:**
+- ✅ Timeline-based editing interface (trim, split, reorder)
+- ✅ Preview playback with timeline synchronization
+- ✅ Export pipeline with FFmpeg processing
+- ✅ S3 cleanup after export (removes draft files)
+- ✅ Database finalization flag (`manual_editing_done`)
+- ✅ Frontend restrictions (hides editing if finalized)
+
+This enables professional editing capabilities while maintaining campaign immutability after export.
+
+---
+
+**Last Updated:** January 20, 2025 (Phase 4 Manual Editing Implementation Complete)
 

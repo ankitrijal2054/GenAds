@@ -164,7 +164,8 @@ export const CreateProject = () => {
       uploadFormData.append('file', file)
       uploadFormData.append('asset_type', assetType)
       
-      const uploadResponse = await fetch('http://localhost:8000/api/upload-asset', {
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+      const uploadResponse = await fetch(`${API_BASE_URL}/api/upload-asset`, {
         method: 'POST',
         body: uploadFormData,
       })
@@ -267,7 +268,7 @@ export const CreateProject = () => {
       </div>
 
       {/* Navigation Header */}
-      <nav className="relative z-10 border-b border-olive-600/50 backdrop-blur-md bg-olive-950/50 sticky top-0">
+      <nav className="relative z-50 border-b border-olive-600/50 backdrop-blur-md bg-olive-950/30 sticky top-0">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">

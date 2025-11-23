@@ -1,7 +1,7 @@
-"""Renderer Service - Final video rendering for TikTok vertical (9:16 only).
+"""Renderer Service - Final video rendering for horizontal (16:9 only).
 
 This service combines composited video scenes with audio and generates
-final TikTok vertical video (1080x1920).
+final horizontal video (1920x1080).
 """
 
 import logging
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 class Renderer:
-    """Renders final TikTok vertical video (9:16, 1080x1920)."""
+    """Renders final horizontal video (16:9, 1920x1080)."""
 
     def __init__(
         self,
@@ -48,7 +48,7 @@ class Renderer:
         variation_index: int = None,
     ) -> str:
         """
-        Render final TikTok vertical video (9:16, 1080x1920).
+        Render final horizontal video (16:9, 1920x1080).
 
         Args:
             scene_video_urls: List of URLs/paths of scene videos (in order)
@@ -58,7 +58,7 @@ class Renderer:
         Returns:
             Local file path of final video
         """
-        logger.info("Rendering final TikTok vertical video (9:16, 1080x1920)")
+        logger.info("Rendering final horizontal video (16:9, 1920x1080)")
 
         with tempfile.TemporaryDirectory() as tmpdir:
             try:
@@ -69,33 +69,44 @@ class Renderer:
                     await self._download_file(url, path)
                     scene_paths.append(path)
 
-                # Download audio
-                audio_path = Path(tmpdir) / "audio.mp3"
-                await self._download_file(audio_url, audio_path)
+                # Download audio (skip if URL is empty or invalid)
+                audio_path = None
+                if audio_url and audio_url.strip():
+                    try:
+                        audio_path = Path(tmpdir) / "audio.mp3"
+                        await self._download_file(audio_url, audio_path)
+                    except Exception as e:
+                        logger.warning(f"Failed to download audio, proceeding without audio: {e}")
+                        audio_path = None
 
                 # Concatenate scene videos
                 concat_path = Path(tmpdir) / "concatenated.mp4"
                 await self._concatenate_videos(scene_paths, concat_path)
 
-                # Mix with audio
-                mixed_path = Path(tmpdir) / "with_audio.mp4"
-                await self._mix_audio(concat_path, audio_path, mixed_path)
+                # Mix with audio (if available)
+                video_to_render = concat_path  # Default to concatenated video
+                if audio_path and audio_path.exists():
+                    mixed_path = Path(tmpdir) / "with_audio.mp4"
+                    await self._mix_audio(concat_path, audio_path, mixed_path)
+                    video_to_render = mixed_path
+                else:
+                    logger.info("No audio available, using concatenated video without audio")
 
-                # Render TikTok vertical (9:16, 1080x1920)
+                # Render horizontal (16:9, 1920x1080)
                 output_path = Path(tmpdir) / "final.mp4"
-                await self._apply_aspect_ratio(mixed_path, output_path, "9:16")
+                await self._apply_aspect_ratio(video_to_render, output_path, "16:9")
 
                 # Save to local storage
                 from app.utils.local_storage import LocalStorageManager
                 from uuid import UUID
                 local_path = LocalStorageManager.save_final_video(
                     UUID(project_id),
-                    "9:16",
+                    "16:9",
                     str(output_path),
                     variation_index=variation_index
                 )
 
-                logger.info(f"✅ Final TikTok vertical video rendered: {local_path}")
+                logger.info(f"✅ Final horizontal video rendered: {local_path}")
                 return local_path
 
             except Exception as e:
@@ -184,24 +195,32 @@ class Renderer:
             raise
 
     async def _mix_audio(self, video_path: Path, audio_path: Path, output_path: Path):
-        """Mix video with audio using FFmpeg."""
+        """Mix video with audio using FFmpeg.
+        
+        Audio will be looped if shorter than video to ensure full video length.
+        Video duration determines final output length.
+        """
         try:
+            # Loop audio if it's shorter than video (for background music)
+            # Using -stream_loop -1 loops audio infinitely, then -shortest ensures
+            # output length matches video length (audio stops when video ends)
             cmd = [
                 "ffmpeg",
                 "-i",
                 str(video_path),
+                "-stream_loop", "-1",  # Loop audio infinitely
                 "-i",
                 str(audio_path),
                 "-c:v",
                 "copy",
                 "-c:a",
                 "aac",
-                "-shortest",  # End at shortest input
+                "-shortest",  # End when video ends (audio loops until then)
                 "-y",
                 str(output_path),
             ]
 
-            logger.debug("Mixing audio with video...")
+            logger.debug("Mixing audio with video (audio will loop if shorter)...")
             result = subprocess.run(cmd, capture_output=True, text=True)
 
             if result.returncode != 0:
@@ -215,10 +234,10 @@ class Renderer:
             raise
 
     async def _apply_aspect_ratio(self, input_path: Path, output_path: Path, aspect_ratio: str):
-        """Apply TikTok vertical aspect ratio (9:16, 1080x1920) using FFmpeg with padding."""
+        """Apply horizontal aspect ratio (16:9, 1920x1080) using FFmpeg with padding."""
         try:
-            # TikTok vertical dimensions (hardcoded)
-            width, height = (1080, 1920)
+            # Horizontal dimensions (hardcoded)
+            width, height = (1920, 1080)
 
             # Use scale and pad to achieve aspect ratio
             # This ensures content isn't cropped, just padded

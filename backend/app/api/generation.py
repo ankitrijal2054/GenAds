@@ -569,11 +569,11 @@ async def stream_video(
              raise HTTPException(status_code=400, detail="Invalid variation index")
         
         # Construct path based on hierarchy: brands/{brand_id}/perfumes/{perfume_id}/campaigns/{campaign_id}/variation_{i}/final/final_video.mp4
-        # Note: currently only 9:16 is generated as 'final_video.mp4'
+        # Note: currently only 16:9 is generated as 'final_video.mp4'
         # In future phases, we might have final_1_1.mp4 etc.
         filename = "final_video.mp4"
-        if aspect_ratio != '9:16':
-            # For now, we only support 9:16 as per Phase 2 implementation
+        if aspect_ratio != '16:9':
+            # For now, we only support 16:9 as per Phase 2 implementation
             # If other aspect ratios are requested, we check if they exist or fail
             # TODO: Support other aspect ratios in filenames (e.g., final_1_1.mp4)
             pass
@@ -653,6 +653,7 @@ async def stream_video(
             raise HTTPException(status_code=500, detail="Failed to stream video from S3")
         
         # Stream the video file to client with CORS headers
+        # Use no-cache headers to prevent browser caching after edits
         return StreamingResponse(
             iter([video_stream]),
             media_type=content_type,
@@ -661,7 +662,9 @@ async def stream_video(
                 "Content-Type": content_type,
                 "Accept-Ranges": "bytes",
                 "ETag": f'"{etag}"',
-                "Cache-Control": "public, max-age=3600",
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0",
                 "Access-Control-Allow-Origin": "*",
                 "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
                 "Access-Control-Allow-Headers": "Range, Content-Range, Content-Type",
@@ -735,7 +738,7 @@ async def download_video(
             target_variation = 0
         
         filename = "final_video.mp4"
-        if aspect_ratio != '9:16':
+        if aspect_ratio != '16:9':
             pass # Future support
             
         s3_key = f"brands/{campaign.brand_id}/perfumes/{campaign.perfume_id}/campaigns/{campaign_id}/variation_{target_variation}/final/{filename}"

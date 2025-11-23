@@ -675,6 +675,40 @@ def get_projects_without_s3_paths(
 # Brand CRUD Operations (Phase 2 B2B SaaS)
 # ============================================================================
 
+def ensure_user_exists(db: Session, user_id: UUID) -> None:
+    """
+    Ensure user exists in auth.users table (for local development).
+    
+    In local Docker, users authenticated via Supabase Auth might not exist
+    in the local auth.users table. This function creates them if missing.
+    
+    Args:
+        db: Database session
+        user_id: User ID to ensure exists
+    """
+    try:
+        from sqlalchemy import text
+        
+        # Check if user exists, and if not, insert them
+        # Use raw SQL to avoid SQLAlchemy model dependencies
+        result = db.execute(
+            text("SELECT 1 FROM auth.users WHERE id = :user_id"),
+            {"user_id": user_id}
+        )
+        if not result.first():
+            # Insert user into auth.users (for local development)
+            db.execute(
+                text("INSERT INTO auth.users (id) VALUES (:user_id) ON CONFLICT (id) DO NOTHING"),
+                {"user_id": user_id}
+            )
+            db.commit()
+            logger.info(f"✅ Created user {user_id} in auth.users (local development)")
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to ensure user exists in auth.users: {e}")
+        # Don't raise - this is a best-effort for local dev
+        db.rollback()
+
+
 def create_brand(
     db: Session,
     user_id: UUID,
@@ -701,6 +735,9 @@ def create_brand(
         Exception: If brand creation fails (e.g., duplicate name or user_id)
     """
     try:
+        # Ensure user exists in auth.users (for local development)
+        ensure_user_exists(db, user_id)
+        
         brand = Brand(
             brand_id=brand_id,  # Use provided brand_id or None (will use model default)
             user_id=user_id,

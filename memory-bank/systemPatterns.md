@@ -242,8 +242,9 @@ Brief → Scenes → Videos → Composite → Render
 
 ## Data Flow Patterns
 
-### Scene Generation Flow
+### Scene Generation Flow (Updated for Veo S3 Migration)
 
+**CURRENT PIPELINE (7 Steps - Pre-Veo):**
 ```
 1. Planning Phase
    Brief + Brand → GPT-4o-mini → Scenes + Style Spec
@@ -252,68 +253,104 @@ Brief → Scenes → Videos → Composite → Render
    Product Image → rembg → Masked PNG → S3
 
 3. Parallel Generation (KEY OPTIMIZATION - All within single worker job)
-   Scene 1 → Wān API → Video 1 ┐
-   Scene 2 → Wān API → Video 2 ├→ All API calls concurrent (4x faster)
-   Scene 3 → Wān API → Video 3 │  Using asyncio.gather()
-   Scene 4 → Wān API → Video 4 ┘
+   Scene 1 → ByteDance API → Video 1 ┐
+   Scene 2 → ByteDance API → Video 2 ├→ All API calls concurrent (4x faster)
+   Scene 3 → ByteDance API → Video 3 │  Using asyncio.gather()
+   Scene 4 → ByteDance API → Video 4 ┘
 
-   Note: This is I/O-bound (waiting for API responses)
-         Worker sends all requests → waits → receives all responses
-         NOT multi-processing or threading, just async HTTP calls
-
-4. Compositing
-   Video 1 + Product PNG → Composited Video 1
-   Video 2 + Product PNG → Composited Video 2
+4. Compositing (TO BE REMOVED)
+   Video 1 + Product PNG → OpenCV frame-by-frame overlay
+   Video 2 + Product PNG → OpenCV frame-by-frame overlay
    ...
 
-5. Enhancement
-   Composited Videos → Add Text Overlays → Final Scenes
+5. Text Overlay (TO BE REMOVED)
+   Videos → FFmpeg drawtext → Text overlaid
 
-6. Rendering
-   Final Scenes + Music → Master Video (9:16)
-   Master Video → Multi-Aspect → [9:16, 1:1, 16:9]
+6. Audio Generation
+   MusicGen → Luxury ambient music
+
+7. Final Rendering
+   Scenes + Music → TikTok vertical (9:16)
 ```
 
-**Why This Parallelism Works:**
-- Replicate API calls are I/O-bound (network waiting)
-- Worker isn't CPU-processing while waiting for API
-- Can issue multiple HTTP requests concurrently
-- Each API processes independently on Replicate's servers
+**NEW PIPELINE (5 Steps - Post-Veo Migration):**
+```
+1. Planning Phase (Enhanced)
+   Brief + Brand → GPT-4o-mini with Veo S3 prompts → Scenes with embedded instructions
+   - Cinematic vocabulary (dolly shots, rack focus, volumetric lighting)
+   - Text instructions embedded in prompts
+   - Product/logo flags per scene
+
+2. Asset Preparation (Optional)
+   Product Image → Optional preprocessing for Veo
+
+3. Parallel Generation (Veo S3 Image-to-Video)
+   Scene 1 + Product Ref + Text Instructions → Veo S3 → Video 1 ┐
+   Scene 2 + Logo Ref + Text Instructions → Veo S3 → Video 2 ├→ Concurrent (4x faster)
+   Scene 3 + Instructions → Veo S3 → Video 3                  │  asyncio.gather()
+   Scene 4 + Product + Logo → Veo S3 → Video 4                ┘
+   
+   Note: Veo S3 handles product, text, and cinematography natively
+         No manual compositing or text overlay needed
+         Each scene can have different image references
+
+4. Audio Generation
+   MusicGen → Luxury ambient music
+
+5. Final Rendering
+   Scenes + Music → TikTok vertical (9:16)
+```
+
+**Key Changes:**
+- ❌ Removed Steps 4 & 5 (Compositing + Text Overlay)
+- ✅ Enhanced Step 1 (Scene Planning with Veo prompts)
+- ✅ Updated Step 3 (Veo S3 image-to-video with references)
+- ⚡ 30% faster generation (fewer steps)
+- 🎨 Better quality (natural integration vs manual overlay)
+
+**Why This Parallelism Still Works:**
+- Veo API calls are I/O-bound (network waiting)
+- Worker sends all scene requests concurrently
+- Each scene can have different image references (product/logo)
+- asyncio.gather() handles parallel async calls
 - Worker collects all results when ready
 
 ---
 
 ## Component Relationships
 
-### Backend Services
+### Backend Services (Updated for Veo S3 Migration)
 
 ```
-ScenePlanner
-  └─> Creates: Scene objects, StyleSpec
-  └─> Uses: OpenAI API
-  └─> Output: JSON structures
+ScenePlanner (Enhanced for Veo S3)
+  └─> Creates: Scene objects with Veo-enhanced prompts, StyleSpec
+  └─> Uses: OpenAI API (GPT-4o-mini with Veo S3 system prompt)
+  └─> Output: Scenes with cinematic vocabulary + text/product instructions
+  └─> NEW: Embeds text overlay instructions in prompts (not rendered separately)
+  └─> NEW: Includes cinematography details (dolly shots, rack focus, volumetric lighting)
 
 ProductExtractor
-  └─> Input: User-uploaded image
+  └─> Input: Perfume front image URL (from database)
   └─> Uses: rembg library
-  └─> Output: Masked PNG (S3 URL)
+  └─> Output: Masked PNG (S3 URL) - Optional preprocessing for Veo
+  └─> Status: May be simplified/removed in future (Veo can handle raw images)
 
-VideoGenerator
-  └─> Input: Scene + StyleSpec
-  └─> Uses: Replicate Wān model
-  └─> Output: Background video (S3 URL)
+VideoGenerator (Updated for Veo S3)
+  └─> Input: Scene + StyleSpec + Product/Logo Images (optional)
+  └─> Uses: Google Veo S3 model (image-to-video)
+  └─> NEW: Accepts image references per scene (product, logo)
+  └─> NEW: Text embedded by Veo (not overlaid)
+  └─> Output: Complete scene video with product + text integrated (S3 URL)
 
-Compositor
-  └─> Input: Background video + Product PNG + Scene config + Scene role
-  └─> Uses: OpenCV + PIL, TikTok vertical safe zones (15-75%)
-  └─> Positioning: center, center_upper, center_lower (perfume-specific)
-  └─> Scaling: Role-based (hook: 0.5, showcase: 0.6, cta: 0.5) or explicit override
-  └─> Output: Composited video (local path)
+Compositor (DEPRECATED - TO BE REMOVED)
+  └─> Status: No longer used after Veo S3 migration
+  └─> Reason: Veo S3 handles product integration naturally
+  └─> Code: Kept in codebase for reference, not called in pipeline
 
-TextOverlayRenderer
-  └─> Input: Video + Overlay config + Brand
-  └─> Uses: FFmpeg drawtext
-  └─> Output: Video with text (S3 URL)
+TextOverlayRenderer (DEPRECATED - TO BE REMOVED)
+  └─> Status: No longer used after Veo S3 migration
+  └─> Reason: Veo S3 generates text in scene (not overlaid)
+  └─> Schema: TextOverlay repurposed for Veo instruction generation
 
 AudioEngine
   └─> Input: Duration + Gender (masculine/feminine/unisex)
@@ -321,14 +358,24 @@ AudioEngine
   └─> Method: generate_perfume_background_music() (perfume-specific)
   └─> Prompt: Luxury ambient cinematic with gender-aware descriptors
   └─> Output: Music track (local path)
+  └─> Status: Unchanged
 
 Renderer
-  └─> Input: Scene videos + Audio
+  └─> Input: Scene videos (from Veo) + Audio
   └─> Uses: FFmpeg concat + mux
   └─> Output: Final TikTok vertical video (9:16 only) (local path as string)
+  └─> Status: Unchanged
 ```
 
-**Dependency Direction:** Always forward, no cycles.
+**Service Evolution:**
+- ✅ ScenePlanner: Enhanced with Veo prompting
+- ✅ VideoGenerator: Updated to support Veo S3 API
+- ❌ Compositor: Deprecated (Veo handles product integration)
+- ❌ TextOverlayRenderer: Deprecated (Veo generates text in scene)
+- ✅ AudioEngine: Unchanged
+- ✅ Renderer: Unchanged
+
+**Dependency Direction:** Always forward, no cycles. Simplified with fewer services.
 
 ---
 
@@ -809,5 +856,271 @@ async def upload_final_video(brand_id, perfume_id, campaign_id, variation_index,
 
 ---
 
-**Last Updated:** November 18, 2025 (Phase 2 B2B SaaS - Phase 2 S3 Storage Refactor Complete)
+## Scene Editing Patterns (Phase 3 - January 20, 2025)
+
+### Edit Pipeline Pattern
+
+**Pattern:** Single-scene editing with full video re-render
+
+```python
+# User edits Scene 2
+1. Load scene data from campaign_json
+2. Modify prompt via EditService (LLM)
+3. Regenerate Scene 2 video only
+4. Replace Scene 2 in S3 (overwrites old)
+5. Download ALL scenes from S3
+6. Re-render final video (all scenes + audio)
+7. Upload new final video (replaces old)
+8. Update campaign_json + edit_history
+```
+
+**Why This Works:**
+- Only edited scene regenerated (cost-efficient)
+- Final video always consistent (re-rendered from all scenes)
+- Edit history lightweight (JSONB, no versioning table)
+- S3-first architecture (scenes stored, downloaded temporarily)
+
+### Edit History Pattern
+
+**Pattern:** Lightweight audit trail in JSONB
+
+```python
+# Edit history stored in campaign_json.edit_history
+{
+  "edits": [
+    {
+      "edit_id": "uuid",
+      "timestamp": "ISO8601",
+      "scene_index": 1,
+      "edit_prompt": "Make brighter",
+      "original_prompt": "...",
+      "modified_prompt": "...",
+      "changes_summary": "...",
+      "cost": 0.21,
+      "duration_seconds": 187
+    }
+  ],
+  "total_edit_cost": 0.63,
+  "edit_count": 3
+}
+```
+
+**Benefits:**
+- No separate versioning table (simpler schema)
+- Queryable via JSONB GIN index
+- Full audit trail (who, what, when, cost)
+- Easy to extend (add fields without migration)
+
+### Prompt Modification Pattern
+
+**Pattern:** LLM modifies prompts while maintaining consistency
+
+```python
+# EditService.modify_scene_prompt()
+- Takes: original_prompt, edit_instruction, style_spec, scene_role, perfume_name
+- Uses: GPT-4o-mini with specialized system prompt
+- Returns: { modified_prompt, changes_summary }
+- Maintains: Scene structure, brand consistency, perfume grammar
+```
+
+**Key Principles:**
+- User's edit instruction = PRIMARY (honor user vision)
+- Perfume grammar = SECONDARY (how to show it)
+- Style consistency = MAINTAINED (same style spec)
+- Scene structure = PRESERVED (duration, role, transitions)
+
+### S3 Scene Management Pattern
+
+**Pattern:** Scenes stored in S3, downloaded for re-rendering
+
+```python
+# Scene storage structure
+brands/{brand_id}/perfumes/{perfume_id}/campaigns/{campaign_id}/
+  variation_{variation_index}/
+    draft/
+      scene_1_bg.mp4  ← Edited scene replaces old
+      scene_2_bg.mp4
+      scene_3_bg.mp4
+      scene_4_bg.mp4
+      music.mp3
+    final_video.mp4  ← Re-rendered after edit
+```
+
+**Edit Flow:**
+1. Regenerate Scene 2 → Upload to S3 (overwrites old scene_2_bg.mp4)
+2. Download all 4 scenes from S3 to /tmp
+3. Re-render final video locally
+4. Upload new final_video.mp4 (overwrites old)
+5. Cleanup /tmp files
+
+**Why:**
+- S3 is source of truth (scenes persist)
+- Local processing temporary (downloaded, processed, deleted)
+- No versioning overhead (just replace old files)
+- Cost-efficient (only edited scene regenerated)
+
+### Job Polling Pattern
+
+**Pattern:** Frontend polls job status until complete
+
+```typescript
+// Frontend polling logic
+const pollEditJob = async (jobId: string) => {
+  const maxAttempts = 120; // 4 minutes max (2s intervals)
+  let attempts = 0;
+  
+  while (attempts < maxAttempts) {
+    const response = await api.get(`/api/generation/jobs/${jobId}/status`);
+    
+    if (response.data.status === 'completed') {
+      return; // Success
+    } else if (response.data.status === 'failed') {
+      throw new Error('Edit failed');
+    }
+    
+    await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2s
+    attempts++;
+  }
+  
+  throw new Error('Edit timeout');
+};
+```
+
+**Why Polling:**
+- Simpler than WebSockets (no infrastructure needed)
+- 2s intervals sufficient (edit takes ~3-4 minutes)
+- Easy to implement (standard HTTP requests)
+- Can upgrade to WebSockets later if needed
+
+---
+
+---
+
+## Manual Editing Patterns (Phase 4 - January 20, 2025)
+
+### Timeline-Based Editing Pattern
+
+**Pattern:** Manual video editing with timeline interface
+
+```typescript
+// Timeline state managed via Zustand store
+const timelineState = {
+  video_clips: [
+    { id: 'scene-0', position: 0, trim_start: 0, trim_end: 4, ... },
+    { id: 'scene-1', position: 4, trim_start: 0, trim_end: 5, ... },
+    // ... all 4 scenes
+  ],
+  audio_clips: [
+    { id: 'music-track', position: 0, trim_start: 0, trim_end: 30, ... }
+  ]
+}
+```
+
+**Why This Works:**
+- Adapted from existing Electron editing app (`editing/` folder)
+- Zustand store already web-compatible
+- Timeline state serializable for export
+- Supports trim, split, reorder operations
+
+### Export & Finalization Pattern
+
+**Pattern:** Export locks campaign and cleans up S3
+
+```python
+# Export pipeline steps:
+1. Download scenes from S3 → /tmp
+2. Download music from S3 → /tmp
+3. Apply timeline edits (trim, split, reorder) via FFmpeg
+4. Concatenate edited scenes
+5. Mix audio
+6. Upload final video to S3 (replaces old)
+7. Delete all draft files from S3 (scenes, music)
+8. Set manual_editing_done = True
+```
+
+**S3 Structure Before Export:**
+```
+draft/
+├── scene_1_bg.mp4
+├── scene_2_bg.mp4
+├── scene_3_bg.mp4
+├── scene_4_bg.mp4
+└── music.mp3
+final_video.mp4
+```
+
+**S3 Structure After Export:**
+```
+final_video.mp4  (only this remains)
+```
+
+**Why This Works:**
+- Reduces S3 storage costs (draft files removed)
+- Campaign becomes immutable (no editing conflicts)
+- Clear workflow: prompt-based → manual → finalized
+- One-way flag prevents accidental re-editing
+
+### Component Adaptation Pattern
+
+**Pattern:** Adapt Electron app components for web
+
+**Key Adaptations:**
+1. **Video Source:** Replace `clipforge://` protocol with S3 URLs/API proxy
+2. **Export:** Replace Electron IPC with REST API calls
+3. **File Handling:** Load from campaign data, not file system
+4. **State:** Use Zustand store (already web-compatible)
+
+**Example:**
+```typescript
+// Before (Electron):
+function getVideoSrc(filePath: string): string {
+  return `clipforge://${encodeURI(...)}`
+}
+
+// After (Web):
+function getVideoSrc(filePath: string): string {
+  if (filePath.startsWith('http') || filePath.startsWith('blob:')) {
+    return filePath
+  }
+  if (filePath.includes('amazonaws.com')) {
+    return `/api/video/proxy?url=${encodeURIComponent(filePath)}`
+  }
+  return filePath
+}
+```
+
+**Why This Works:**
+- Reuses existing editing components
+- Minimal code changes (mostly import paths)
+- Web-compatible video source handling
+- API-based export instead of IPC
+
+### Finalization Restriction Pattern
+
+**Pattern:** One-way flag prevents editing after export
+
+```python
+# Database flag
+manual_editing_done = Column(Boolean, default=False)
+
+# Set on export (not on page entry)
+if export_successful:
+    update_campaign(campaign_id, manual_editing_done=True)
+    cleanup_s3_draft_files()  # Remove scenes, music
+```
+
+**Frontend Behavior:**
+- ManualEditing page: Redirects if `manual_editing_done = True`
+- VideoResults page: Hides editing options if flag is `true`
+- API endpoints: Return 400 if flag is `true`
+
+**Why This Works:**
+- Prevents conflicts between editing modes
+- Ensures video consistency
+- Reduces storage costs
+- Clear user experience (campaign finalized)
+
+---
+
+**Last Updated:** January 20, 2025 (Phase 4 Manual Editing Implementation Complete)
 

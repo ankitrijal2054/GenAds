@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     replicate_api_token: Optional[str] = None
     openai_api_key: Optional[str] = None
     
+    # Video Generation Model
+    # Options: "veo-3.1" (Google Veo 3.1) or "seedance-1-pro" (ByteDance SeedAnce-1-Pro)
+    video_model: str = os.getenv("VIDEO_MODEL", "veo-3.1")
+    
     # AWS S3
     aws_access_key_id: Optional[str] = None
     aws_secret_access_key: Optional[str] = None
@@ -34,7 +38,8 @@ class Settings(BaseSettings):
     
     # API Config
     api_host: str = "0.0.0.0"
-    api_port: int = 8000
+    # Railway may provide PORT, or we use API_PORT, or default to 8000
+    api_port: int = int(os.getenv("PORT") or os.getenv("API_PORT", "8000"))
     
     # Worker Config
     worker_processes: int = 1

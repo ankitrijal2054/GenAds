@@ -21,6 +21,7 @@ app = FastAPI(
 )
 
 # CORS configuration
+# Allow all Vercel deployments and localhost
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -28,10 +29,14 @@ app.add_middleware(
         "http://localhost:5176",  # Vite frontend dev (alternate)
         "http://localhost:3000",  # Alternative dev port
         "https://localhost:5173",
+        "https://frontend-aktae0o07-ankitrijal2054-3646s-projects.vercel.app",  # Vercel frontend (preview)
+        "https://frontend-beige-kappa-25.vercel.app",  # Vercel frontend (production)
     ],
+    allow_origin_regex=r"https://.*\.vercel\.app",  # All Vercel preview deployments
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 
@@ -43,13 +48,19 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     for error in errors:
         logger.error(f"  Field: {error.get('loc')}, Error: {error.get('msg')}, Type: {error.get('type')}")
     
-    return JSONResponse(
+    response = JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={
             "detail": errors,
             "message": "Validation error - check field requirements"
         }
     )
+    # Ensure CORS headers are added to error responses
+    origin = request.headers.get("origin")
+    if origin:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+    return response
 
 
 @app.on_event("startup")
@@ -89,7 +100,7 @@ async def root():
 
 
 # Import and include routers
-from app.api import projects, generation, storage, uploads, local_generation, brands, perfumes, campaigns
+from app.api import projects, generation, storage, uploads, local_generation, brands, perfumes, campaigns, editing
 app.include_router(projects.router, prefix="/api/projects", tags=["projects"])
 app.include_router(generation.router, prefix="/api/generation", tags=["generation"])
 app.include_router(local_generation.router, prefix="/api/local-generation", tags=["local-generation"])
@@ -98,6 +109,7 @@ app.include_router(uploads.router, prefix="/api", tags=["uploads"])
 app.include_router(brands.router, prefix="/api/brands", tags=["brands"])
 app.include_router(perfumes.router, prefix="/api/perfumes", tags=["perfumes"])
 app.include_router(campaigns.router, prefix="/api/campaigns", tags=["campaigns"])
+app.include_router(editing.router)  # Already has /api/campaigns prefix
 
 
 if __name__ == "__main__":
