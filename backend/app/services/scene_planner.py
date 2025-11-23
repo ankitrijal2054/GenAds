@@ -941,22 +941,26 @@ VEO 3.1 REFERENCE IMAGE INTEGRATION (CRITICAL):
 MANDATORY STRUCTURE (CRITICAL - FOLLOW EXACTLY):
 
 1. STORY SCENES (All scenes EXCEPT second-to-last and last): SMOOTH NARRATIVE FLOW
+   ⚠️ CRITICAL: Story scenes MUST DIRECTLY implement the USER'S CREATIVE PROMPT above!
+   - DO NOT use generic templates - READ THE USER'S CREATIVE VISION and bring IT to life
+   - If user says "midnight garden" → create midnight garden scenes
+   - If user says "ocean waves" → create ocean scenes
+   - If user says "romantic dinner" → create romantic dinner scenes
+   - THE USER'S PROMPT IS THE STORY - your job is to visualize THEIR vision
+
    - Duration: 4-8 seconds each (based on story demands)
-   - MUST create a cohesive STORY based on user's creative prompt
-   - Product integration must be INTERACTIVE and NATURAL:
-     * Actor/hand SPRAYING the perfume
-     * Someone PICKING UP the bottle elegantly
-     * Hands APPLYING the fragrance
-     * Person HOLDING the bottle while walking/moving
-     * Bottle being PLACED on a surface as part of action
-     * PASSING the bottle between hands
+   - Product integration must be INTERACTIVE and NATURAL (when it fits the story):
+     * Hand SPRAYING the perfume as part of the narrative
+     * Someone PICKING UP the bottle in context
+     * Applying fragrance as story moment
+     * Holding bottle while in the scene setting
    - NEVER show product as static hero shot in story scenes
-   - Product should be PART OF THE ACTION, not the sole focus
-   - Each scene must flow smoothly into the next
+   - Product should blend into THE USER'S STORY naturally
+   - Each scene must advance THE USER'S NARRATIVE
    - Use COMPLEX CINEMATOGRAPHY:
      * Dolly shots following the action
      * Crane movements revealing the scene
-     * Rack focus between actor and product
+     * Rack focus between elements
      * Tracking shots with smooth gimbal movement
      * Dynamic camera angles that enhance storytelling
    - Visual continuity across all story scenes (lighting, colors, mood)
@@ -1036,8 +1040,8 @@ Return ONLY valid JSON array with {scene_count} scene objects:
     "shot_variation": "story_opening",
     "role": "hook",
     "duration": 6,  # STORY SCENES: 4-8 seconds
-    "background_prompt": "Cinematic story opening. Elegant hand reaches for the perfume bottle on a vanity table. Dolly-in camera following the motion, volumetric morning light, shallow depth of field, {chosen_style} aesthetic. Actor's hand gracefully picks up the bottle. Complex cinematography with crane movement.",
-    "use_product": true,  # INTERACTIVE product usage - being picked up
+    "background_prompt": "[DIRECTLY FROM USER'S CREATIVE PROMPT] - Opening scene that brings the USER'S specific creative vision to life. Describe the exact scene/setting/mood from their prompt. Dolly-in camera, volumetric lighting, {chosen_style} aesthetic. If user mentions a location, mood, or concept - USE IT HERE. Complex cinematography.",
+    "use_product": true,  # INTERACTIVE product usage when it fits the story
     "use_logo": false,
     "product_position": "center",
     "product_scale": 0.5,
@@ -1052,7 +1056,7 @@ Return ONLY valid JSON array with {scene_count} scene objects:
       "animation": "none"
     }}
   }},
-  ... (STORY scenes with INTERACTIVE product usage - spraying, applying, holding - 4-8s each) ...
+  ... (MORE STORY scenes that CONTINUE the USER'S narrative - each scene advances THEIR story with interactive product moments) ...
   {{
     "scene_id": {scene_count - 2},
     "shot_type": "macro_bottle",
@@ -1106,10 +1110,11 @@ Return ONLY valid JSON array with {scene_count} scene objects:
 - Grammar = SECONDARY (inform execution style, not content)
 
 - STORY SCENES (all except second-to-last and last):
+  * ⚠️ MUST DIRECTLY implement USER'S CREATIVE PROMPT - not generic scenes!
   * Duration: 4-8 seconds each
-  * INTERACTIVE product usage ONLY (spraying, picking up, holding, applying)
-  * NEVER static hero shots - product must be part of the ACTION
-  * Smooth story flow connecting all scenes together
+  * Create scenes based on THEIR specific vision/concept/setting
+  * INTERACTIVE product usage when it fits the story (spraying, picking up, holding)
+  * NEVER static hero shots - product blends into the narrative
   * Complex cinematography (dolly, crane, tracking, rack focus)
 
 - SECOND-TO-LAST SCENE (scene {scene_count - 2}) - HERO SHOT:
@@ -1393,10 +1398,10 @@ Follow user's vision FIRST, grammar rules SECOND."""
                 {
                     "scene_id": 2,
                     "shot_type": "atmospheric",
-                    "shot_variation": "moment_of_pleasure",
+                    "shot_variation": "fragrance_atmosphere",
                     "role": "showcase",
                     "duration": 7,  # Story scene: 4-8s
-                    "background_prompt": f"Story builds. Close-up of person enjoying the fragrance, eyes closed in pleasure. Gimbal smooth movement, golden hour light, {style} aesthetic. Soft bokeh background.",
+                    "background_prompt": f"Story builds. Elegant fragrance mist catches golden light rays, creating dreamy atmosphere. Gimbal smooth movement through scented air, {style} aesthetic. Soft bokeh with floating light particles.",
                     "use_product": False,
                     "camera_movement": "slow_zoom_in",
                     "transition_to_next": "fade",
@@ -1475,10 +1480,10 @@ Follow user's vision FIRST, grammar rules SECOND."""
                 {
                     "scene_id": 2,
                     "shot_type": "atmospheric",
-                    "shot_variation": "moment_of_pleasure",
+                    "shot_variation": "fragrance_atmosphere",
                     "role": "showcase",
                     "duration": 7,  # Story scene: 4-8s
-                    "background_prompt": f"Story builds. Close-up of person enjoying fragrance with eyes closed. Gimbal smooth movement, golden hour light streaming in, {style} aesthetic. Soft bokeh background.",
+                    "background_prompt": f"Story builds. Elegant fragrance mist catches golden light rays streaming through window. Gimbal smooth movement through scented air, {style} aesthetic. Soft bokeh with floating particles.",
                     "use_product": False,
                     "camera_movement": "slow_zoom_in",
                     "transition_to_next": "fade",
