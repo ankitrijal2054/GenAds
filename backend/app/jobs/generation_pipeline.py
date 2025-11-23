@@ -693,10 +693,7 @@ BRAND GUIDELINES (extracted from guidelines document):
             )
 
             from app.config import settings
-            generator = VideoGenerator(
-                api_token=settings.replicate_api_token,
-                model=getattr(settings, 'video_model', 'seedance-1-pro')
-            )
+            generator = VideoGenerator(api_token=settings.replicate_api_token)
 
             # Get the chosen style for all scenes (from campaign)
             chosen_style = campaign.selected_style
@@ -710,32 +707,33 @@ BRAND GUIDELINES (extracted from guidelines document):
             logger.info("Generating TikTok vertical videos (9:16)")
             logger.info(f"📦 Assets available - Product: {has_product} ({product_url[:80] if product_url else 'N/A'}...), Logo: {has_logo}")
 
-            # LOG: Show scene scripts and reference image usage
-            logger.info(f"📝 Scene scripts to send to video generator ({len(ad_project.scenes)} scenes):")
+            # Log scene scripts and reference image usage
+            logger.info(f"📝 Generating {len(ad_project.scenes)} scenes with Veo 3.1:")
             for i, scene in enumerate(ad_project.scenes):
                 product_info = f" [PRODUCT: {scene.use_product}]" if has_product else ""
                 logo_info = f" [LOGO: {scene.use_logo}]" if has_logo else ""
-                logger.info(f"   Scene {i+1} ({scene.role}){product_info}{logo_info}: {scene.background_prompt}")
+                logger.info(f"   Scene {i+1} ({scene.role}){product_info}{logo_info}: {scene.background_prompt[:80]}...")
             
             tasks = []
             for i, scene in enumerate(ad_project.scenes):
-                try:
-                    # VEO 3.1 READY: Pass product/logo images as reference when use_product/use_logo is True
-                    task = generator.generate_scene_background(
-                        prompt=scene.background_prompt,
-                        style_spec_dict=ad_project.style_spec.dict() if hasattr(ad_project.style_spec, 'dict') else (ad_project.style_spec if isinstance(ad_project.style_spec, dict) else {}),
-                        duration=scene.duration,
-                        extracted_style=None,  # Reference image removed in Phase 2
-                        style_override=scene.style or chosen_style,
-                        product_image_url=product_url if (scene.use_product and has_product) else None,
-                        logo_image_url=logo_url if (scene.use_logo and has_logo) else None,
-                        use_product=scene.use_product and has_product,
-                        use_logo=scene.use_logo and has_logo,
-                    )
-                    tasks.append(task)
-                except Exception as e:
-                    logger.error(f"Failed to create task for scene {i} (role: {scene.role}): {e}")
-                    raise
+                # Get style spec as dict
+                style_spec_dict = ad_project.style_spec.dict() if hasattr(ad_project.style_spec, 'dict') else (
+                    ad_project.style_spec if isinstance(ad_project.style_spec, dict) else {}
+                )
+                
+                # Pass product/logo images as reference when use_product/use_logo is True
+                task = generator.generate_scene_background(
+                    prompt=scene.background_prompt,
+                    style_spec_dict=style_spec_dict,
+                    duration=scene.duration,
+                    extracted_style=None,  # Reference image extraction removed in Phase 2
+                    style_override=scene.style or chosen_style,
+                    product_image_url=product_url if (scene.use_product and has_product) else None,
+                    logo_image_url=logo_url if (scene.use_logo and has_logo) else None,
+                    use_product=scene.use_product and has_product,
+                    use_logo=scene.use_logo and has_logo,
+                )
+                tasks.append(task)
 
             scene_videos = await asyncio.gather(*tasks, return_exceptions=True)
 

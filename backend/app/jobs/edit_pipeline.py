@@ -115,7 +115,7 @@ class SceneEditPipeline:
             # STEP 3: Regenerate scene video
             video_generator = VideoGenerator(
                 api_token=settings.replicate_api_token,
-                model=getattr(settings, 'video_model', 'seedance-1-pro')
+                model=getattr(settings, 'video_model', 'veo-3.1')
             )
             
             new_video_url = await video_generator.generate_scene_background(
