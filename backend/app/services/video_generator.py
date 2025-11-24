@@ -298,7 +298,7 @@ class VideoGenerator:
             "input": {
                 "prompt": prompt,
                 "duration": veo_duration,
-                "resolution": "720p",  # Veo 3.1 supports 720p and 1080p
+                "resolution": "1080p",  # Veo 3.1 supports 720p and 1080p
                 "aspect_ratio": "16:9",  # Hardcoded horizontal
                 "fps": 24,  # Cinematic frame rate
                 "generate_audio": False,  # We generate audio separately via MusicGen
