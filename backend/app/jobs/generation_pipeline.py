@@ -767,7 +767,7 @@ BRAND GUIDELINES (extracted from guidelines document):
 
     @timed_step("Audio Generation")
     async def _generate_audio(self, campaign: Any, perfume: Any, ad_project: AdProject, progress_start: int = 75) -> str:
-        """Generate luxury perfume background music using MusicGen."""
+        """Generate unique background music tailored to the ad's scenes and mood."""
         try:
             update_campaign(
                 self.db, self.campaign_id, status="processing", progress=progress_start
@@ -781,21 +781,54 @@ BRAND GUIDELINES (extracted from guidelines document):
                 s3_bucket_name=settings.s3_bucket_name,
                 aws_region=settings.aws_region,
             )
-            
+
             # Use perfume gender directly from perfume table
             logger.info(f"Using perfume gender: {perfume.perfume_gender}")
-            
+
             # Calculate total duration from scenes
             total_duration = sum(scene.duration for scene in ad_project.scenes) if ad_project.scenes else campaign.target_duration
-            
-            # Use new perfume-specific audio generation method
+
+            # Extract scene summaries for unique music generation
+            scene_summaries = []
+            if ad_project.scenes:
+                for scene in ad_project.scenes:
+                    # Extract key info from each scene for music context
+                    scene_info = scene.background_prompt or scene.description or ""
+                    if scene.role:
+                        scene_info = f"[{scene.role}] {scene_info}"
+                    scene_summaries.append(scene_info)
+
+            # Get style mood from style_spec if available
+            style_mood = None
+            if ad_project.style_spec:
+                style_spec = ad_project.style_spec
+                if hasattr(style_spec, 'mood_atmosphere'):
+                    style_mood = style_spec.mood_atmosphere
+                elif hasattr(style_spec, 'music_mood'):
+                    style_mood = style_spec.music_mood
+
+            # Get brand name
+            brand_name = None
+            if isinstance(ad_project.brand, dict):
+                brand_name = ad_project.brand.get('name')
+            elif hasattr(ad_project.brand, 'name'):
+                brand_name = ad_project.brand.name
+
+            logger.info(f"🎵 Generating unique music based on {len(scene_summaries)} scenes")
+            logger.info(f"   Creative prompt: {campaign.creative_prompt[:80] if campaign.creative_prompt else 'N/A'}...")
+
+            # Generate unique music based on ad content
             audio_url = await audio_engine.generate_perfume_background_music(
                 duration=total_duration,
-                project_id=str(self.campaign_id),  # LocalStorageManager uses project_id naming
-                gender=perfume.perfume_gender,  # Use perfume gender directly
+                project_id=str(self.campaign_id),
+                gender=perfume.perfume_gender,
+                creative_prompt=campaign.creative_prompt,
+                scene_summaries=scene_summaries,
+                brand_name=brand_name,
+                style_mood=style_mood,
             )
 
-            logger.info(f"Generated perfume audio: {audio_url}")
+            logger.info(f"Generated unique perfume audio: {audio_url}")
             return audio_url
 
         except Exception as e:
