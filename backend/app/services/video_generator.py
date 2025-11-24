@@ -298,7 +298,7 @@ class VideoGenerator:
             "input": {
                 "prompt": prompt,
                 "duration": veo_duration,
-                "resolution": "720p",  # Veo 3.1 supports 720p and 1080p
+                "resolution": "1080p",  # Veo 3.1 supports 720p and 1080p
                 "aspect_ratio": "16:9",  # Hardcoded horizontal
                 "fps": 24,  # Cinematic frame rate
                 "generate_audio": False,  # We generate audio separately via MusicGen
@@ -375,8 +375,13 @@ class VideoGenerator:
                 logger.error(f"Response: {e.response.text}")
             raise
 
-    async def _poll_prediction(self, prediction_id: str, max_wait: int = 300) -> Optional[dict]:
-        """Poll prediction until it completes."""
+    async def _poll_prediction(self, prediction_id: str, max_wait: int = 1200) -> Optional[dict]:
+        """Poll prediction until it completes.
+
+        Args:
+            prediction_id: Replicate prediction ID
+            max_wait: Maximum wait time in seconds (default 1200s = 20 minutes for Veo 3.1)
+        """
         headers = {"Authorization": f"Bearer {self.api_token}"}
         
         start_time = time.time()

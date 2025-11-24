@@ -13,7 +13,7 @@ from datetime import datetime
 
 from app.database.connection import init_db
 from app.database import connection as db_connection
-from app.database.crud import get_campaign_by_id, update_campaign
+from app.database.crud import get_campaign_by_id, update_campaign, get_brand_by_id, get_perfume_by_id
 from app.services.edit_service import EditService
 from app.services.video_generator import VideoGenerator
 from app.services.renderer import Renderer
@@ -112,22 +112,52 @@ class SceneEditPipeline:
             
             logger.info(f"Prompt modified. Changes: {changes_summary}")
             
-            # STEP 3: Regenerate scene video
+            # STEP 3: Get product and logo URLs for reference images
+            # Get brand for logo URL
+            brand = get_brand_by_id(self.db, self.campaign.brand_id) if self.campaign.brand_id else None
+            logo_url = brand.brand_logo_url if brand and brand.brand_logo_url else None
+            has_logo = logo_url is not None
+            
+            # Construct product URL from S3 (same pattern as generation pipeline)
+            # Pattern: brands/{brand_id}/perfumes/{perfume_id}/campaigns/{campaign_id}/draft/product/extracted.png
+            product_url = None
+            has_product = False
+            if self.campaign.perfume_id:
+                perfume = get_perfume_by_id(self.db, self.campaign.perfume_id)
+                if perfume and perfume.front_image_url:
+                    # Construct S3 URL for extracted product
+                    s3_key = (
+                        f"brands/{str(self.campaign.brand_id)}/perfumes/{str(self.campaign.perfume_id)}/"
+                        f"campaigns/{str(self.campaign_id)}/draft/product/extracted.png"
+                    )
+                    product_url = f"https://{settings.s3_bucket_name}.s3.{settings.aws_region}.amazonaws.com/{s3_key}"
+                    has_product = True
+            
+            # Check scene flags for reference image usage
+            use_product = scene.get('use_product', False) and has_product
+            use_logo = scene.get('use_logo', False) and has_logo
+            
+            logger.info(f"📦 Reference images - Product: {use_product} ({product_url[:80] if product_url else 'N/A'}...), Logo: {use_logo}")
+            
+            # STEP 4: Regenerate scene video
             video_generator = VideoGenerator(
-                api_token=settings.replicate_api_token,
-                model=getattr(settings, 'video_model', 'veo-3.1')
+                api_token=settings.replicate_api_token
             )
             
             new_video_url = await video_generator.generate_scene_background(
                 prompt=modified_prompt,
                 style_spec_dict=style_spec,
-                duration=float(scene_duration)
+                duration=float(scene_duration),
+                product_image_url=product_url if use_product else None,
+                logo_image_url=logo_url if use_logo else None,
+                use_product=use_product,
+                use_logo=use_logo,
             )
-            total_cost += 0.20  # ByteDance cost
+            total_cost += 0.20  # Veo 3.1 cost
             
             logger.info(f"New scene video generated: {new_video_url}")
             
-            # STEP 4: Download and upload to S3 (replace old scene)
+            # STEP 5: Download and upload to S3 (replace old scene)
             with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as tmp:
                 tmp_path = tmp.name
                 
@@ -152,7 +182,7 @@ class SceneEditPipeline:
             os.unlink(tmp_path)
             logger.info(f"Scene uploaded to S3: {new_scene_s3_url}")
             
-            # STEP 5: Download ALL scenes for re-rendering
+            # STEP 6: Download ALL scenes for re-rendering
             all_scene_urls = []
             for i, s in enumerate(scenes):
                 if i == self.scene_index:
@@ -185,7 +215,7 @@ class SceneEditPipeline:
                 s3_client.download_file(bucket_name, s3_key, temp_path)
                 scene_temps.append(temp_path)
             
-            # STEP 6: Re-render final video
+            # STEP 7: Re-render final video
             renderer = Renderer(
                 aws_access_key_id=settings.aws_access_key_id,
                 aws_secret_access_key=settings.aws_secret_access_key,
@@ -216,7 +246,7 @@ class SceneEditPipeline:
                 variation_index=self.campaign.selected_variation_index or 0
             )
             
-            # STEP 7: Upload new final video (replaces old)
+            # STEP 8: Upload new final video (replaces old)
             final_result = await upload_final_video(
                 brand_id=str(self.campaign.brand_id),
                 perfume_id=str(self.campaign.perfume_id),
@@ -225,7 +255,7 @@ class SceneEditPipeline:
                 file_path=final_video_path
             )
             
-            # STEP 8: Update campaign database
+            # STEP 9: Update campaign database
             # Update scene prompt
             scenes[self.scene_index]['background_prompt'] = modified_prompt
             scenes[self.scene_index]['edit_count'] = scenes[self.scene_index].get('edit_count', 0) + 1
@@ -280,7 +310,7 @@ class SceneEditPipeline:
                 status="completed"
             )
             
-            # STEP 9: Cleanup temps
+            # STEP 10: Cleanup temps
             for temp in scene_temps + [final_video_path]:
                 if os.path.exists(temp):
                     try:

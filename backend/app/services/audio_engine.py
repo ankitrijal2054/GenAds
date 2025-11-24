@@ -55,23 +55,38 @@ class AudioEngine:
         duration: float,
         project_id: str,
         gender: str = "unisex",  # 'masculine', 'feminine', 'unisex'
+        creative_prompt: str = None,
+        scene_summaries: list = None,
+        brand_name: str = None,
+        style_mood: str = None,
     ) -> str:
         """
-        Generate background music for luxury perfume ad (simplified).
+        Generate background music for luxury perfume ad tailored to the specific ad content.
 
         Args:
             duration: Music duration in seconds
             project_id: Project UUID for local storage
             gender: Perfume gender ('masculine', 'feminine', 'unisex')
+            creative_prompt: User's creative vision for the ad
+            scene_summaries: List of scene descriptions/moods
+            brand_name: Brand name for context
+            style_mood: Overall style mood (e.g., 'elegant', 'dramatic', 'playful')
 
         Returns:
             Local file path to music file (in /tmp/genads/{project_id}/drafts/)
         """
-        logger.info(f"🎵 Generating luxury perfume music ({duration}s, {gender})...")
+        logger.info(f"🎵 Generating unique perfume music ({duration}s, {gender})...")
 
         try:
-            # Create perfume-specific prompt
-            prompt = self._create_perfume_music_prompt(duration, gender)
+            # Create scene-aware perfume music prompt
+            prompt = self._create_perfume_music_prompt(
+                duration=duration,
+                gender=gender,
+                creative_prompt=creative_prompt,
+                scene_summaries=scene_summaries,
+                brand_name=brand_name,
+                style_mood=style_mood,
+            )
 
             # Generate music via MusicGen
             music_url = await self._call_musicgen_model(prompt, duration)
@@ -79,7 +94,7 @@ class AudioEngine:
             # Download and save to local storage
             local_path = await self._save_music_locally(music_url, project_id, "luxury_perfume")
 
-            logger.info(f"✅ Generated perfume music saved locally: {local_path}")
+            logger.info(f"✅ Generated unique perfume music saved locally: {local_path}")
             return local_path
 
         except Exception as e:
@@ -127,36 +142,212 @@ class AudioEngine:
             logger.error(f"❌ Error generating music: {e}")
             raise
 
-    def _create_perfume_music_prompt(self, duration: float, gender: str) -> str:
-        """Create music prompt for luxury perfume ad.
-        
+    def _create_perfume_music_prompt(
+        self,
+        duration: float,
+        gender: str,
+        creative_prompt: str = None,
+        scene_summaries: list = None,
+        brand_name: str = None,
+        style_mood: str = None,
+    ) -> str:
+        """Create unique music prompt tailored to the specific ad's scenes and mood.
+
         Args:
             duration: Music duration in seconds
             gender: Perfume gender ('masculine', 'feminine', 'unisex')
-            
+            creative_prompt: User's creative vision for the ad
+            scene_summaries: List of scene descriptions/moods
+            brand_name: Brand name for context
+            style_mood: Overall style mood
+
         Returns:
-            Formatted prompt string for MusicGen
+            Formatted prompt string for MusicGen that's unique to this ad
         """
+        # Base gender descriptors
         gender_descriptors = {
-            "masculine": "deep, confident, powerful, sophisticated",
-            "feminine": "elegant, delicate, romantic, flowing",
-            "unisex": "sophisticated, elegant, modern, refined"
+            "masculine": "deep, confident, powerful",
+            "feminine": "elegant, delicate, romantic",
+            "unisex": "sophisticated, modern, refined"
         }
-        
         gender_desc = gender_descriptors.get(gender.lower(), gender_descriptors["unisex"])
-        
-        prompt = (
-            f"Luxury ambient cinematic background music for perfume commercial. "
-            f"Mood: {gender_desc}. "
-            f"Style: elegant, sophisticated, premium, ambient. "
-            f"Tempo: slow to moderate. "
-            f"Duration: {int(duration)} seconds. "
-            f"Instrumental only, no vocals. "
-            f"High-quality cinematic production suitable for luxury brand advertising."
-        )
-        
-        logger.debug(f"Perfume music prompt: {prompt}")
+
+        # Extract emotional keywords and atmosphere from creative prompt
+        emotional_tone = self._extract_emotional_tone(creative_prompt)
+        atmosphere = self._extract_atmosphere(creative_prompt, scene_summaries)
+        narrative_arc = self._extract_narrative_arc(scene_summaries)
+
+        # Build unique music prompt based on ad content
+        prompt_parts = []
+
+        # Core music description
+        prompt_parts.append("Cinematic background music for luxury perfume advertisement.")
+
+        # Add emotional tone from creative prompt
+        if emotional_tone:
+            prompt_parts.append(f"Emotional tone: {emotional_tone}.")
+        else:
+            prompt_parts.append(f"Mood: {gender_desc}.")
+
+        # Add atmosphere/setting context
+        if atmosphere:
+            prompt_parts.append(f"Atmosphere: {atmosphere}.")
+
+        # Add narrative arc for music progression
+        if narrative_arc:
+            prompt_parts.append(f"Musical journey: {narrative_arc}.")
+
+        # Add style mood if provided
+        if style_mood:
+            prompt_parts.append(f"Style: {style_mood}.")
+        else:
+            prompt_parts.append("Style: elegant, premium, cinematic.")
+
+        # Technical requirements
+        prompt_parts.append(f"Duration: {int(duration)} seconds.")
+        prompt_parts.append("Instrumental only, no vocals.")
+        prompt_parts.append("High-quality production suitable for advertising.")
+
+        prompt = " ".join(prompt_parts)
+
+        logger.info(f"🎵 Generated unique music prompt: {prompt[:150]}...")
+        logger.debug(f"Full music prompt: {prompt}")
         return prompt
+
+    def _extract_emotional_tone(self, creative_prompt: str) -> str:
+        """Extract emotional tone keywords from creative prompt.
+
+        Analyzes the creative prompt to identify the emotional direction
+        for the music (romantic, mysterious, energetic, serene, etc.)
+        """
+        if not creative_prompt:
+            return None
+
+        prompt_lower = creative_prompt.lower()
+
+        # Map of keywords to emotional tones
+        emotion_mappings = [
+            # Romantic/Sensual
+            (["romantic", "love", "passion", "sensual", "intimate", "seductive"],
+             "romantic, warm, intimate, flowing melodies"),
+            # Mysterious/Dark
+            (["mysterious", "dark", "night", "shadow", "enigmatic", "secret"],
+             "mysterious, atmospheric, deep, haunting undertones"),
+            # Energetic/Dynamic
+            (["energetic", "dynamic", "vibrant", "bold", "exciting", "adventure"],
+             "energetic, dynamic, building intensity, rhythmic"),
+            # Serene/Calm
+            (["serene", "calm", "peaceful", "tranquil", "gentle", "soft"],
+             "serene, peaceful, gentle, ambient waves"),
+            # Luxurious/Opulent
+            (["luxury", "opulent", "rich", "gold", "royal", "exclusive"],
+             "opulent, grand, orchestral richness, premium"),
+            # Fresh/Natural
+            (["fresh", "nature", "ocean", "forest", "beach", "breeze", "morning"],
+             "fresh, airy, natural, light and uplifting"),
+            # Playful/Youthful
+            (["playful", "fun", "youthful", "joyful", "happy", "bright"],
+             "playful, light, cheerful, whimsical touches"),
+            # Dramatic/Intense
+            (["dramatic", "intense", "powerful", "fierce", "strong"],
+             "dramatic, intense, powerful crescendos, cinematic tension"),
+            # Dreamy/Ethereal
+            (["dreamy", "ethereal", "fantasy", "magical", "enchanted", "fairy"],
+             "dreamy, ethereal, floating, magical ambience"),
+            # Modern/Urban
+            (["modern", "urban", "city", "contemporary", "sleek", "chic"],
+             "modern, sleek, contemporary electronic elements"),
+        ]
+
+        for keywords, tone in emotion_mappings:
+            if any(kw in prompt_lower for kw in keywords):
+                return tone
+
+        return None
+
+    def _extract_atmosphere(self, creative_prompt: str, scene_summaries: list) -> str:
+        """Extract atmosphere/setting from prompt and scenes.
+
+        Identifies the visual/environmental setting to inform music texture.
+        """
+        # Combine all text for analysis
+        all_text = (creative_prompt or "").lower()
+        if scene_summaries:
+            all_text += " " + " ".join(str(s).lower() for s in scene_summaries)
+
+        if not all_text.strip():
+            return None
+
+        # Map settings to musical atmospheres
+        atmosphere_mappings = [
+            # Beach/Ocean
+            (["beach", "ocean", "sea", "wave", "coastal", "tropical"],
+             "oceanic, flowing waves, tropical warmth"),
+            # Forest/Nature
+            (["forest", "woods", "nature", "garden", "botanical", "floral"],
+             "organic, natural textures, earthy warmth"),
+            # Night/Evening
+            (["night", "evening", "midnight", "moonlight", "stars", "dusk"],
+             "nocturnal, deep, velvet darkness, intimate"),
+            # Golden/Sunset
+            (["golden", "sunset", "sunrise", "warm light", "amber"],
+             "golden hour warmth, amber glow, nostalgic"),
+            # City/Urban
+            (["city", "urban", "skyline", "penthouse", "rooftop"],
+             "urban sophistication, metropolitan elegance"),
+            # Desert/Sand
+            (["desert", "sand", "dunes", "arabian", "middle east"],
+             "exotic, warm winds, desert mystique"),
+            # Winter/Ice
+            (["winter", "snow", "ice", "frost", "cold", "crystal"],
+             "crystalline, cool, pristine, delicate"),
+            # Rain/Storm
+            (["rain", "storm", "thunder", "dramatic sky"],
+             "dramatic, building tension, atmospheric"),
+            # Marble/Luxury Interior
+            (["marble", "velvet", "silk", "chandelier", "ballroom"],
+             "opulent interiors, classical elegance"),
+        ]
+
+        for keywords, atmosphere in atmosphere_mappings:
+            if any(kw in all_text for kw in keywords):
+                return atmosphere
+
+        return None
+
+    def _extract_narrative_arc(self, scene_summaries: list) -> str:
+        """Extract narrative arc from scenes to guide music progression.
+
+        Analyzes scene flow to create music that builds with the story.
+        """
+        if not scene_summaries or len(scene_summaries) < 2:
+            return None
+
+        num_scenes = len(scene_summaries)
+
+        # Analyze scene types if available
+        has_intro = any("intro" in str(s).lower() or "opening" in str(s).lower()
+                       for s in scene_summaries[:2])
+        has_hero = any("hero" in str(s).lower() or "product" in str(s).lower()
+                      for s in scene_summaries)
+        has_outro = any("logo" in str(s).lower() or "outro" in str(s).lower() or "ending" in str(s).lower()
+                       for s in scene_summaries[-2:])
+
+        # Build narrative arc description for music
+        if has_intro and has_hero and has_outro:
+            return (
+                f"starts gentle and intriguing, builds through {num_scenes} scenes "
+                f"to an elegant peak at the hero moment, then resolves smoothly"
+            )
+        elif num_scenes <= 3:
+            return "short and impactful, immediate elegance with graceful ending"
+        elif num_scenes <= 5:
+            return "builds gradually from subtle opening to sophisticated climax, gentle resolution"
+        else:
+            return (
+                f"extended journey through {num_scenes} moments, "
+                f"evolving texture with memorable peaks, elegant conclusion"
+            )
 
     def _create_music_prompt(self, mood: str, duration: float, tempo: str) -> str:
         """Create music generation prompt.
