@@ -113,30 +113,9 @@ GenAds/
 - ✅ Multi-scene video generation
 - ✅ Background music generation
 - ✅ Text overlay rendering
-- ✅ Multi-aspect export (9:16, 1:1, 16:9)
 - ✅ Real-time progress tracking
-- ✅ Cost transparency ($1-2 per video)
-
-## 🗺️ Development Phases
-
-- **Phase 0:** ✅ Infrastructure Setup (COMPLETE)
-- **Phase 1:** Backend Core Structure
-- **Phase 2:** Service Layer Implementation
-- **Phase 3:** Pipeline Integration
-- **Phase 4:** API Endpoints
-- **Phase 5:** Frontend Pages
-- **Phase 6:** Testing & Bug Fixes
-- **Phase 7:** Deployment
-- **Phase 8:** Documentation
-
-## 📖 Documentation
-
-- `SETUP_GUIDE.md` - Detailed setup and credential configuration
-- `memory-bank/projectbrief.md` - Project vision and scope
-- `memory-bank/systemPatterns.md` - Architecture and design patterns
-- `memory-bank/techContext.md` - Technology decisions
-- `AI_Docs/MVP_ARCHITECTURE_FINAL.md` - System architecture
-- `AI_Docs/MVP_TASKLIST_FINAL.md` - Implementation tasks
+- ✅ Prompt based scene editing
+- ✅ Manual video editing
 
 ## 🎬 How It Works
 
@@ -167,13 +146,6 @@ GenAds/
    - 1:1 (Square - Instagram)
    - 16:9 (Horizontal - YouTube)
 
-## 📊 Performance Targets
-
-- Generation time: <10 minutes for 30s video
-- Cost: ~$1.00 per video
-- Success rate: >90%
-- Product quality: 8/10+
-
 ## 🛠️ Development Commands
 
 ```bash
@@ -201,14 +173,5 @@ npm run lint                               # Linting
 
 ## 📝 License
 
-Private project for AI Ad Video Generator.
-
-## 👤 Author
-
-Ankit Rijal - Solo Developer
-
----
-
-**Status:** Phase 0 Complete - Ready for Phase 1 Backend Implementation  
-**Last Updated:** November 14, 2025
+MIT
 
