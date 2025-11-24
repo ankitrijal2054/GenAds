@@ -375,12 +375,12 @@ class VideoGenerator:
                 logger.error(f"Response: {e.response.text}")
             raise
 
-    async def _poll_prediction(self, prediction_id: str, max_wait: int = 600) -> Optional[dict]:
+    async def _poll_prediction(self, prediction_id: str, max_wait: int = 1200) -> Optional[dict]:
         """Poll prediction until it completes.
 
         Args:
             prediction_id: Replicate prediction ID
-            max_wait: Maximum wait time in seconds (default 600s = 10 minutes for Veo 3.1)
+            max_wait: Maximum wait time in seconds (default 1200s = 20 minutes for Veo 3.1)
         """
         headers = {"Authorization": f"Bearer {self.api_token}"}
         
