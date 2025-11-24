@@ -639,7 +639,9 @@ export const ManualEditing = () => {
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back
           </Button>
-          <h1 className="text-xl font-semibold text-white">Manual Video Editor</h1>
+          <h1 className="text-xl font-semibold text-white">
+            {campaign?.manual_editing_done ? 'Video' : 'Manual Video Editor'}
+          </h1>
         </div>
         
         <div className="flex items-center gap-2">
@@ -708,10 +710,12 @@ export const ManualEditing = () => {
         )}
       </div>
       
-      {/* Timeline */}
-      <div className={`h-64 border-t border-gray-700 transition-all duration-300 ${isSidebarOpen ? 'mr-80' : ''}`}>
-        <Timeline />
-      </div>
+      {/* Timeline - Only show if manual editing not done */}
+      {campaign && !campaign.manual_editing_done && (
+        <div className={`h-64 border-t border-gray-700 transition-all duration-300 ${isSidebarOpen ? 'mr-80' : ''}`}>
+          <Timeline />
+        </div>
+      )}
     </div>
   )
 }
